@@ -1,5 +1,6 @@
 import { Text, SafeAreaView, StyleSheet } from 'react-native';
 import Started from './screens/login/Started';
+import CreateAccount from './screens/login/CreateAccount';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
@@ -12,6 +13,11 @@ export default function App() {
       <Stack.Screen 
         name="Started" 
         component={Started} 
+        options={{ headerShown: false }} 
+      />
+      <Stack.Screen
+        name="CreateAccount"
+        component={CreateAccount}
         options={{ headerShown: false }} 
       />
       {/* <Stack.Screen 

@@ -28,7 +28,7 @@ export default function Started() {
         </Text>
         <TouchableOpacity 
           style={styles.buttonPrimary} 
-          onPress={() => navigation.navigate("Login")}
+          onPress={() => navigation.navigate("CreateAccount")}
         >
           <Text style={styles.buttonTextPrimary}>Đăng nhập</Text>
         </TouchableOpacity>
