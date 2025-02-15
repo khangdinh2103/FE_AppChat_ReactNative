@@ -24,7 +24,7 @@ export default function Started() {
           />
         </View>
         <Text style={styles.title}>
-          Trò chuyện dễ dàng, kết nối nhanh chóng, mọi lúc mọi nơi!
+          Trò chuyện dễ dàng, kết nối nhanh chóng, mọi lúc mọi nơi !
         </Text>
         <TouchableOpacity 
           style={styles.buttonPrimary} 
