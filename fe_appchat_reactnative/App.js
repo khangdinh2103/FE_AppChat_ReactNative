@@ -1,6 +1,7 @@
 import { Text, SafeAreaView, StyleSheet } from 'react-native';
 import Started from './screens/login/Started';
 import  CreateAccount2 from './screens/create-account/CreateAccount2';
+import OTPVerification from './screens/create-account/OTPVerification';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
@@ -10,21 +11,17 @@ export default function App() {
   return (
     <NavigationContainer>
     <Stack.Navigator initialRouteName="Started">
-      <Stack.Screen 
-        name="Started" 
+      {/* <Stack.Screen 
+        name="CreateAccount2" 
         component={CreateAccount2} 
         options={{ headerShown: false }} 
-      />
-      {/* <Stack.Screen 
-        name="Login" 
-        component={Login} 
-        options={{ title: 'Đăng nhập' }} 
-      />
-      <Stack.Screen 
-        name="Register" 
-        component={Register} 
-        options={{ title: 'Đăng ký' }} 
       /> */}
+      <Stack.Screen 
+        name="OTPVerification" 
+        component={OTPVerification} 
+        options={{ headerShown: false }} 
+      />
+      
     </Stack.Navigator>
   </NavigationContainer>
   );
