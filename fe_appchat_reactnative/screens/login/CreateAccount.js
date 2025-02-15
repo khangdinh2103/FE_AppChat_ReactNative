@@ -1,4 +1,11 @@
 import React, { useState } from "react";
+import { YellowBox } from "react-native";
+
+YellowBox.ignoreWarnings([
+  "Support for defaultProps will be removed from function components"
+]);
+
+
 import {
   SafeAreaView,
   View,
@@ -9,9 +16,21 @@ import {
   StyleSheet,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
+import { useNavigation } from "@react-navigation/native";
+import CountryPicker from "react-native-country-picker-modal";
 
 export default function CreateAccount(props) {
   const [textInput1, onChangeTextInput1] = useState("");
+  const [countryCode, setCountryCode] = useState("VN");
+  const [callingCode, setCallingCode] = useState("84");
+  const [visible, setVisible] = useState(false);
+  const navigation = useNavigation();
+
+  const onSelect = (country) => {
+    setCountryCode(country.cca2);
+    setCallingCode(country.callingCode[0]);
+    setVisible(false);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -34,20 +53,33 @@ export default function CreateAccount(props) {
         <View style={styles.row2}>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => alert("Đã nhấn!")}
+            onPress={() => setVisible(true)}
           >
-            <Text style={styles.text4}>VN +84</Text>
+            {/* <Text style={styles.text4}>{countryCode} +{callingCode}</Text> */}
+            <CountryPicker
+          visible={visible}
+          withCallingCode
+          withFilter
+          withFlag
+          withAlphaFilter
+          withCallingCodeButton
+          onSelect={onSelect}
+          onClose={() => setVisible(false)}
+          countryCode={countryCode}
+        />
           </TouchableOpacity>
           <TextInput
             placeholder={"Số điện thoại"}
             value={textInput1}
             onChangeText={onChangeTextInput1}
             style={styles.input}
+            keyboardType="numeric"
           />
         </View>
+        
         <TouchableOpacity
           style={styles.button2}
-          onPress={() => alert("Đã nhấn!")}
+          onPress={() => navigation.navigate("OTP")}
         >
           <Text style={styles.text5}>Tiếp tục</Text>
         </TouchableOpacity>
@@ -55,6 +87,7 @@ export default function CreateAccount(props) {
     </SafeAreaView>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {
@@ -106,12 +139,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 24,
   },
   button: {
-    width: 66,
     alignItems: "center",
     backgroundColor: "#F7F7FC",
     borderRadius: 4,
-    paddingVertical: 13,
+    paddingVertical: 1,
     marginRight: 18,
+    paddingLeft: 10,
+    paddingRight:10 ,
   },
   input: {
     color: "#000000",
@@ -136,6 +170,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "bold",
     paddingLeft: 10,
+    paddingRight:10 ,
   },
   text5: {
     color: "#FFFFFF",

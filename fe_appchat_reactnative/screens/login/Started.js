@@ -34,7 +34,7 @@ export default function Started() {
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.buttonSecondary} 
-          onPress={() => navigation.navigate("Register")}
+          onPress={() => navigation.navigate("CreateAccount")}
         >
           <Text style={styles.buttonTextSecondary}>Đăng ký</Text>
         </TouchableOpacity>
