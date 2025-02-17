@@ -1,7 +1,9 @@
 import { Text, SafeAreaView, StyleSheet } from 'react-native';
-import Started from './screens/login/Started';
-import CreateAccount from './screens/login/CreateAccount';
-import OTP from './screens/login/OTP';
+import Started from './src/screens/login/Started';
+import CreateAccount from './src/screens/login/CreateAccount';
+import OTP from './src/screens/login/OTP';
+import Login from './src/screens/login/Login';
+import MyTabs from './src/navigator/MyTabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
@@ -28,16 +30,17 @@ export default function App() {
         component={OTP}
         options={{ headerShown: false }}
       />
-      {/* <Stack.Screen 
+      <Stack.Screen 
         name="Login" 
         component={Login} 
-        options={{ title: 'Đăng nhập' }} 
+        options={{ headerShown: false }}
       />
-      <Stack.Screen 
-        name="Register" 
-        component={Register} 
-        options={{ title: 'Đăng ký' }} 
-      /> */}
+      <Stack.Screen
+        name="MyTabs"
+        component={MyTabs}
+        options={{ headerShown: false }}
+      />
+      
     </Stack.Navigator>
   </NavigationContainer>
   );

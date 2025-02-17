@@ -18,7 +18,7 @@ export default function Started() {
       <ScrollView contentContainerStyle={styles.scrollView}>
         <View style={styles.logoContainer}>
           <Image
-            source={require("../../assets/Login/login.png")}
+            source={require("../../../assets/Login/login.png")}
             style={styles.logo}
             resizeMode="contain"
           />
@@ -28,7 +28,7 @@ export default function Started() {
         </Text>
         <TouchableOpacity 
           style={styles.buttonPrimary} 
-          onPress={() => navigation.navigate("CreateAccount")}
+          onPress={() => navigation.navigate("Login")}
         >
           <Text style={styles.buttonTextPrimary}>Đăng nhập</Text>
         </TouchableOpacity>
