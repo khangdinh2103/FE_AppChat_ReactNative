@@ -20,12 +20,17 @@ export default function OTPVerification({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.row}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
           <Ionicons name="chevron-back" size={24} color="#0F1828" />
         </TouchableOpacity>
         <Text style={styles.title}>Kích hoạt tài khoản</Text>
       </View>
-      <Text style={styles.text2}>Vui lòng không chia sẻ mã xác thực để tránh mất tài khoản</Text>
+      <Text style={styles.text2}>
+        Vui lòng không chia sẻ mã xác thực để tránh mất tài khoản
+      </Text>
       <Text style={styles.text3}>Nhập OTP</Text>
       <Text style={styles.text4}>Đang gửi đến số (+84) XXX XXX XXX</Text>
       <View style={styles.otpContainer}>
@@ -40,8 +45,10 @@ export default function OTPVerification({ navigation }) {
           />
         ))}
       </View>
-      <Text style={styles.resendText}>Gửi lại mã <Text style={styles.timer}>00:25</Text></Text>
-      <TouchableOpacity style={styles.button} onPress={() => alert("Đã nhấn!")}> 
+      <Text style={styles.resendText}>
+        Gửi lại mã <Text style={styles.timer}>00:25</Text>
+      </Text>
+      <TouchableOpacity style={styles.button} onPress={() => alert("Đã nhấn!")}>
         <Text style={styles.buttonText}>Tiếp tục</Text>
       </TouchableOpacity>
     </SafeAreaView>
