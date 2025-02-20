@@ -3,16 +3,19 @@ import { Text, SafeAreaView, StyleSheet } from "react-native";
 import Started from "./screens/login/Started";
 import CreateAccount2 from "./screens/pages/CreateAccount2";
 import OTPVerification from "./screens/pages/OTPVerification";
-import ChatScreen from "./screens/pages/ChatScreen";
+import Home from "./screens/bottomtab/Home";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-
+import MyTabs from "./screens/navigator/MyTabs";
 const Stack = createNativeStackNavigator();
+import Contacts from "./screens/bottomtab/Contacts";
+import Activity from "./screens/bottomtab/Activity";
+import Account from "./screens/bottomtab/Account";
 
 export default function App() {
   return (
     <NavigationContainer>
-      <Stack.Navigator initialRouteName="Started">
+      <Stack.Navigator initialRouteName="MyTabs">
         {/* <Stack.Screen
           name="Started"
           component={Started}
@@ -24,8 +27,28 @@ export default function App() {
           options={{ headerShown: false }}
         /> */}
         <Stack.Screen
-          name="Chat"
-          component={ChatScreen}
+          name="MyTabs"
+          component={MyTabs}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="Home"
+          component={Home}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="Contacts"
+          component={Contacts}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="Activity"
+          component={Activity}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="Account"
+          component={Account}
           options={{ headerShown: false }}
         />
       </Stack.Navigator>

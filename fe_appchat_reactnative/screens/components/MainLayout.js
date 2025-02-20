@@ -1,12 +1,10 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
-import MyTabs from "../navigator/MyTabs";
 
 const MainLayout = ({ children }) => {
   return (
     <View style={styles.container}>
       <View style={styles.content}>{children}</View>
-      <MyTabs />
     </View>
   );
 };
