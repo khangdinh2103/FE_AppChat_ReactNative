@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import MainLayout from "../components/MainLayout";
+import { useNavigation } from "@react-navigation/native";
 
 const settings = [
   {
@@ -45,6 +46,8 @@ const settings = [
 ];
 
 const Account = () => {
+  const navigation = useNavigation();
+
   const renderItem = ({ item }) => (
     <TouchableOpacity style={styles.settingItem}>
       <Ionicons
@@ -79,7 +82,10 @@ const Account = () => {
         </View>
 
         {/* Thông tin tài khoản */}
-        <TouchableOpacity style={styles.profileContainer}>
+        <TouchableOpacity
+          style={styles.profileContainer}
+          onPress={() => navigation.navigate("ProfileScreen")}
+        >
           <Image
             source={{ uri: "https://randomuser.me/api/portraits/men/1.jpg" }}
             style={styles.avatar}

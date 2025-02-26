@@ -6,7 +6,7 @@ import Ionicons from "react-native-vector-icons/Ionicons";
 import Home from "../bottomtab/Home";
 import Contacts from "../bottomtab/Contacts";
 import Activity from "../bottomtab/Activity";
-import Account from "../bottomtab/Account";
+import PersonalTabs from "./PersonalTabs";
 
 // Create the Tab navigator
 const Tab = createBottomTabNavigator();
@@ -87,7 +87,7 @@ const MyTabs = () => {
       />
       <Tab.Screen
         name="Cá nhân"
-        component={Account}
+        component={PersonalTabs}
         options={{ headerShown: false }}
       />
     </Tab.Navigator>
