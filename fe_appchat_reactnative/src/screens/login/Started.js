@@ -26,14 +26,14 @@ export default function Started() {
         <Text style={styles.title}>
           Trò chuyện dễ dàng, kết nối nhanh chóng, mọi lúc mọi nơi !
         </Text>
-        <TouchableOpacity 
-          style={styles.buttonPrimary} 
+        <TouchableOpacity
+          style={styles.buttonPrimary}
           onPress={() => navigation.navigate("Login")}
         >
           <Text style={styles.buttonTextPrimary}>Đăng nhập</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.buttonSecondary} 
+        <TouchableOpacity
+          style={styles.buttonSecondary}
           onPress={() => navigation.navigate("CreateAccount")}
         >
           <Text style={styles.buttonTextSecondary}>Đăng ký</Text>
@@ -49,7 +49,7 @@ export default function Started() {
       </ScrollView>
     </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {

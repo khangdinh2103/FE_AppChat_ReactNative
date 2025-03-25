@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import {
   SafeAreaView,
   View,
@@ -7,22 +7,57 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
+  Alert,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import CountryPicker from "react-native-country-picker-modal";
 import { useNavigation } from "@react-navigation/native";
+import { AuthContext } from "../../contexts/AuthContext"; // Thêm context
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { loginUser } from "../../services/authService"; // Import API đăng nhập
 
 export default function Login(props) {
-  const [textInput1, onChangeTextInput1] = useState("");
-  const [textInput2, onChangeTextInput2] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [countryCode, setCountryCode] = useState("VN");
   const [visible, setVisible] = useState(false);
-  const [showPassword, setShowPassword] = useState(false); // Trạng thái xem mật khẩu
+  const [showPassword, setShowPassword] = useState(false);
   const navigation = useNavigation();
+  const { login } = useContext(AuthContext); // Sử dụng context để cập nhật trạng thái đăng nhập
 
   const onSelect = (country) => {
     setCountryCode(country.cca2);
     setVisible(false);
+  };
+
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert("Lỗi", "Vui lòng nhập đầy đủ email và mật khẩu.");
+      return;
+    }
+
+    try {
+      const response = await loginUser({ email, password });
+      // 🔍 Kiểm tra phản hồi từ API
+      console.log("API Response:", response.data);
+
+      // ✅ Truy xuất accessToken từ `data`
+      const token = response.data?.data?.accessToken;
+      const user = response.data?.data?.user;
+
+      if (!token || !user) {
+        throw new Error("Dữ liệu phản hồi không hợp lệ");
+      }
+
+      await AsyncStorage.setItem("accessToken", token);
+      await AsyncStorage.setItem("user", JSON.stringify(user));
+      login(user);
+      navigation.navigate("MyTabs");
+    } catch (error) {
+      Alert.alert("Lỗi đăng nhập", "Email hoặc mật khẩu không đúng.");
+      console.error("Lỗi đăng nhập:", error);
+    }
   };
 
   return (
@@ -37,9 +72,7 @@ export default function Login(props) {
           </TouchableOpacity>
           <Text style={styles.title}>Đăng nhập</Text>
         </View>
-        <Text style={styles.text2}>
-          Nhập số điện thoại và mật khẩu để đăng nhập
-        </Text>
+        <Text style={styles.text2}>Nhập email và mật khẩu để đăng nhập</Text>
 
         <View style={styles.row2}>
           <TouchableOpacity
@@ -59,19 +92,19 @@ export default function Login(props) {
             />
           </TouchableOpacity>
           <TextInput
-            placeholder={"Số điện thoại"}
-            value={textInput1}
-            onChangeText={onChangeTextInput1}
+            placeholder="Email"
+            value={email}
+            onChangeText={setEmail}
             style={styles.input}
-            keyboardType="numeric"
+            keyboardType="email-address"
           />
         </View>
 
         <View style={styles.passwordContainer}>
           <TextInput
-            placeholder={"Mật khẩu"}
-            value={textInput2}
-            onChangeText={onChangeTextInput2}
+            placeholder="Mật khẩu"
+            value={password}
+            onChangeText={setPassword}
             style={styles.inputPassword}
             secureTextEntry={!showPassword}
           />
@@ -89,10 +122,7 @@ export default function Login(props) {
           <Text style={styles.textForgotPassword}>Lấy lại mật khẩu</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.button2}
-          onPress={() => navigation.navigate("MyTabs")}
-        >
+        <TouchableOpacity style={styles.button2} onPress={handleLogin}>
           <Text style={styles.text5}>Đăng nhập</Text>
         </TouchableOpacity>
       </ScrollView>
