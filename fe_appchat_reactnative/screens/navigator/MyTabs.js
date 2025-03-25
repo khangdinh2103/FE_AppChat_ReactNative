@@ -3,9 +3,9 @@ import "react-native-gesture-handler";
 import { Text } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import Home from "../../src/screens/bottomtab/Home";
-import Contacts from "../../src/screens/bottomtab/Contacts";
-import Activity from "../../src/screens/bottomtab/Activity";
+import Home from "../bottomtab/Home";
+import Contacts from "../bottomtab/Contacts";
+import Activity from "../bottomtab/Activity";
 import PersonalTabs from "./PersonalTabs";
 
 // Create the Tab navigator
