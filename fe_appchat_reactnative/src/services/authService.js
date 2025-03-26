@@ -1,9 +1,20 @@
 import axios from "axios";
 
-const API_URL = "http://192.168.2.66:5000/api/auth"; // Đổi URL theo backend
+const API_URL = "http://192.168.110.86:5000/api/auth"; // Đổi URL theo backend
 
 export const registerUser = async (userData) => {
-  return await axios.post(`${API_URL}/register`, userData);
+  try {
+    const response = await axios.post(`${API_URL}/register`, userData, {
+      headers: { "Content-Type": "application/json" },
+    });
+    return response.data;
+  } catch (error) {
+    console.error(
+      "❌ Lỗi khi gọi API đăng ký:",
+      error.response?.data || error.message
+    );
+    throw error.response?.data || { message: "Lỗi không xác định" };
+  }
 };
 
 export const loginUser = async (userData) => {

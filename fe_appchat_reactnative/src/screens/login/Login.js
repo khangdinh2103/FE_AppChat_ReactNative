@@ -75,7 +75,7 @@ export default function Login(props) {
         <Text style={styles.text2}>Nhập email và mật khẩu để đăng nhập</Text>
 
         <View style={styles.row2}>
-          <TouchableOpacity
+          {/* <TouchableOpacity
             style={styles.button}
             onPress={() => setVisible(true)}
           >
@@ -90,7 +90,7 @@ export default function Login(props) {
               onClose={() => setVisible(false)}
               countryCode={countryCode}
             />
-          </TouchableOpacity>
+          </TouchableOpacity> */}
           <TextInput
             placeholder="Email"
             value={email}
@@ -180,9 +180,9 @@ const styles = StyleSheet.create({
   },
   input: {
     color: "#000000",
+    width: "100%",
     fontSize: 14,
     fontWeight: "bold",
-    width: 220,
     backgroundColor: "#F7F7FC",
     borderRadius: 4,
     paddingVertical: 11,
