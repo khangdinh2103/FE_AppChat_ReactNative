@@ -144,19 +144,19 @@ const styles = StyleSheet.create({
     color: "#8E8E93",
   },
   chatList: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 15,
   },
   chatItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 15,
     borderBottomWidth: 1,
     borderBottomColor: "#E0E0E0",
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 10,
     marginRight: 10,
   },
   avatarPlaceholder: {
