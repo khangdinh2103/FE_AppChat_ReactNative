@@ -1,4 +1,5 @@
 import React from "react";
+import { useRoute, useNavigation } from "@react-navigation/native";
 import {
   View,
   Text,
@@ -39,10 +40,11 @@ const messages = [
 ];
 
 const Home = () => {
+  const navigation = useNavigation();
   const renderItem = ({ item }) => (
     <TouchableOpacity
       style={styles.chatItem}
-      onPress={() => console.log(`Clicked on ${item.name}`)}
+      onPress={() => navigation.navigate("ChatDetail", { name: item.name, avatar: item.avatar })}
     >
       {item.avatar ? (
         <Image source={{ uri: item.avatar }} style={styles.avatar} />
@@ -52,29 +54,8 @@ const Home = () => {
         </View>
       )}
       <View style={styles.chatContent}>
-        <TouchableOpacity
-          onPress={() => console.log(`Clicked on ${item.name}`)}
-        >
-          <Text style={styles.chatName}>{item.name}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => console.log(`Message: ${item.message}`)}
-        >
-          <Text style={styles.chatMessage}>{item.message}</Text>
-        </TouchableOpacity>
-      </View>
-      <View style={styles.chatMeta}>
-        <TouchableOpacity onPress={() => console.log(`Time: ${item.time}`)}>
-          <Text style={styles.chatTime}>{item.time}</Text>
-        </TouchableOpacity>
-        {item.unread > 0 && (
-          <TouchableOpacity
-            style={styles.unreadBadge}
-            onPress={() => console.log(`Unread: ${item.unread}`)}
-          >
-            <Text style={styles.unreadText}>{item.unread}</Text>
-          </TouchableOpacity>
-        )}
+        <Text style={styles.chatName}>{item.name}</Text>
+        <Text style={styles.chatMessage}>{item.message}</Text>
       </View>
     </TouchableOpacity>
   );

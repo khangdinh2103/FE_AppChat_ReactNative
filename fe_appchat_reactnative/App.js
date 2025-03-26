@@ -8,15 +8,16 @@ import Login from './src/screens/login/Login';
 import MyTabs from './src/navigator/MyTabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import ChatDetail from "./src/screens/chat/ChatDetail";
 
 
-import CreateAccount2 from "./src/screens/pages/CreateAccount2";
-import OTPVerification from "./src/screens/pages/OTPVerification";
-import Home from "./src/screens/bottomtab/Home";
+// import CreateAccount2 from "./src/screens/pages/CreateAccount2";
+// import OTPVerification from "./src/screens/pages/OTPVerification";
+// import Home from "./src/screens/bottomtab/Home";
 const Stack = createNativeStackNavigator();
-import Contacts from "./src/screens/bottomtab/Contacts";
-import Activity from "./src/screens/bottomtab/Activity";
-import Account from "./src/screens/bottomtab/Account";
+// import Contacts from "./src/screens/bottomtab/Contacts";
+// import Activity from "./src/screens/bottomtab/Activity";
+// import Account from "./src/screens/bottomtab/Account";
 
 export default function App() {
   return (
@@ -47,6 +48,11 @@ export default function App() {
       <Stack.Screen
         name="MyTabs"
         component={MyTabs}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ChatDetail"
+        component={ChatDetail}
         options={{ headerShown: false }}
       />
       
