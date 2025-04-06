@@ -62,37 +62,28 @@ export default function Login(props) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView}>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.row}>
-          <TouchableOpacity
-            onPress={() => props.navigation.goBack()}
-            style={styles.backButton}
-          >
-            <Ionicons name="chevron-back" size={24} color="#0F1828" />
+          <TouchableOpacity onPress={() => props.navigation.goBack()}>
+            <Ionicons name="chevron-back" size={28} color="#0F1828" />
           </TouchableOpacity>
           <Text style={styles.title}>Đăng nhập</Text>
         </View>
-        <Text style={styles.text2}>Nhập email và mật khẩu để đăng nhập</Text>
 
-        <View style={styles.row2}>
-          {/* <TouchableOpacity
-            style={styles.button}
-            onPress={() => setVisible(true)}
-          >
-            <CountryPicker
-              visible={visible}
-              withCallingCode
-              withFilter
-              withFlag
-              withAlphaFilter
-              withCallingCodeButton
-              onSelect={onSelect}
-              onClose={() => setVisible(false)}
-              countryCode={countryCode}
-            />
-          </TouchableOpacity> */}
+        <Text style={styles.subtitle}>Chào mừng bạn trở lại 👋</Text>
+        <Text style={styles.description}>
+          Nhập email và mật khẩu để tiếp tục
+        </Text>
+
+        {/* Email */}
+        <View style={styles.inputContainer}>
+          <Ionicons name="mail-outline" size={20} color="#8E8E93" />
           <TextInput
             placeholder="Email"
+            placeholderTextColor="#8E8E93"
             value={email}
             onChangeText={setEmail}
             style={styles.input}
@@ -100,30 +91,32 @@ export default function Login(props) {
           />
         </View>
 
-        <View style={styles.passwordContainer}>
+        {/* Password */}
+        <View style={styles.inputContainer}>
+          <Ionicons name="lock-closed-outline" size={20} color="#8E8E93" />
           <TextInput
             placeholder="Mật khẩu"
+            placeholderTextColor="#8E8E93"
             value={password}
             onChangeText={setPassword}
-            style={styles.inputPassword}
+            style={styles.input}
             secureTextEntry={!showPassword}
           />
-          <TouchableOpacity
-            onPress={() => setShowPassword(!showPassword)}
-            style={styles.showPasswordButton}
-          >
-            <Text style={styles.showPasswordText}>
-              {showPassword ? "ẨN" : "HIỆN"}
-            </Text>
+          <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+            <Ionicons
+              name={showPassword ? "eye" : "eye-off"}
+              size={20}
+              color="#8E8E93"
+            />
           </TouchableOpacity>
         </View>
 
         <TouchableOpacity onPress={() => alert("Lấy lại mật khẩu")}>
-          <Text style={styles.textForgotPassword}>Lấy lại mật khẩu</Text>
+          <Text style={styles.forgotPassword}>Quên mật khẩu?</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.button2} onPress={handleLogin}>
-          <Text style={styles.text5}>Đăng nhập</Text>
+        <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
+          <Text style={styles.loginText}>Đăng nhập</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -133,102 +126,68 @@ export default function Login(props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#fff",
   },
   scrollView: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    paddingTop: 25,
+    padding: 24,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 30,
-    marginLeft: 30,
-  },
-  backButton: {
-    marginRight: 16,
+    marginBottom: 32,
   },
   title: {
-    color: "#000000",
     fontSize: 20,
     fontWeight: "bold",
-  },
-  text2: {
+    marginLeft: 12,
     color: "#0F1828",
-    fontSize: 25,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 15,
-    marginHorizontal: 28,
   },
-  row2: {
+  subtitle: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#0F1828",
+    marginBottom: 4,
+  },
+  description: {
+    fontSize: 14,
+    color: "#8E8E93",
+    marginBottom: 32,
+  },
+  inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 30,
-    marginHorizontal: 24,
-  },
-  button: {
-    alignItems: "center",
-    backgroundColor: "#F7F7FC",
-    borderRadius: 4,
-    paddingVertical: 1,
-    marginRight: 18,
-    paddingLeft: 10,
-    paddingRight: 10,
+    backgroundColor: "#F1F1F1",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 16,
   },
   input: {
-    color: "#000000",
-    width: "100%",
-    fontSize: 14,
-    fontWeight: "bold",
-    backgroundColor: "#F7F7FC",
-    borderRadius: 4,
-    paddingVertical: 11,
-    paddingHorizontal: 8,
-  },
-  passwordContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F7F7FC",
-    borderRadius: 4,
-    marginHorizontal: 24,
-    paddingRight: 10,
-    marginBottom: 15,
-  },
-  inputPassword: {
-    color: "#000000",
-    fontSize: 14,
-    fontWeight: "bold",
     flex: 1,
-    paddingVertical: 11,
-    paddingHorizontal: 8,
+    marginLeft: 12,
+    fontSize: 16,
+    color: "#0F1828",
   },
-  showPasswordButton: {
-    paddingHorizontal: 10,
-  },
-  showPasswordText: {
-    color: "#ADB5BD",
-    fontSize: 14,
-    fontWeight: "bold",
-  },
-  textForgotPassword: {
-    color: "#002DE3",
-    fontSize: 12,
+  forgotPassword: {
+    color: "#007AFF",
     textAlign: "right",
-    marginRight: 28,
-    marginBottom: 30,
+    marginBottom: 24,
+    fontSize: 14,
   },
-  button2: {
-    alignItems: "center",
+  loginButton: {
     backgroundColor: "#002DE3",
-    borderRadius: 30,
-    paddingVertical: 19,
-    marginHorizontal: 24,
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: "center",
+    shadowColor: "#002DE3",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  text5: {
-    color: "#FFFFFF",
+  loginText: {
+    color: "#fff",
     fontSize: 16,
     fontWeight: "bold",
   },

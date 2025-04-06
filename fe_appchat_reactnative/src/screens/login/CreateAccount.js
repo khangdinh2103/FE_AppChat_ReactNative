@@ -68,38 +68,28 @@ export default function CreateAccount(props) {
           <Text style={styles.title}>Tạo tài khoản</Text>
         </View>
 
-        <TextInput
-          placeholder="Tên"
-          value={name}
-          onChangeText={setName}
-          style={styles.input}
-        />
-        <TextInput
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
-          style={styles.input}
-          keyboardType="email-address"
-        />
+        <View style={styles.inputContainer}>
+          <Ionicons name="person-outline" size={20} color="#8E8E93" />
+          <TextInput
+            placeholder="Tên"
+            value={name}
+            onChangeText={setName}
+            style={styles.input}
+          />
+        </View>
+        <View style={styles.inputContainer}>
+          <Ionicons name="mail-outline" size={20} color="#8E8E93" />
+          <TextInput
+            placeholder="Email"
+            value={email}
+            onChangeText={setEmail}
+            style={styles.input}
+            keyboardType="email-address"
+          />
+        </View>
 
-        <View style={styles.row2}>
-          {/* <TouchableOpacity
-            style={styles.countryButton}
-            onPress={() => setVisible(true)}
-          >
-            <Text style={styles.countryText}>
-              {countryCode} +{callingCode}
-            </Text>
-          </TouchableOpacity> */}
-          {/* <CountryPicker
-            visible={visible}
-            withCallingCode
-            withFilter
-            withFlag
-            onSelect={onSelect}
-            onClose={() => setVisible(false)}
-            countryCode={countryCode}
-          /> */}
+        <View style={styles.inputContainer}>
+          <Ionicons name="call-outline" size={20} color="#8E8E93" />
           <TextInput
             placeholder="Số điện thoại"
             value={phone}
@@ -109,20 +99,26 @@ export default function CreateAccount(props) {
           />
         </View>
 
-        <TextInput
-          placeholder="Mật khẩu"
-          value={password}
-          onChangeText={setPassword}
-          style={styles.input}
-          secureTextEntry
-        />
-        <TextInput
-          placeholder="Xác nhận mật khẩu"
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          style={styles.input}
-          secureTextEntry
-        />
+        <View style={styles.inputContainer}>
+          <Ionicons name="lock-closed-outline" size={20} color="#8E8E93" />
+          <TextInput
+            placeholder="Mật khẩu"
+            value={password}
+            onChangeText={setPassword}
+            style={styles.input}
+            secureTextEntry
+          />
+        </View>
+        <View style={styles.inputContainer}>
+          <Ionicons name="lock-closed-outline" size={20} color="#8E8E93" />
+          <TextInput
+            placeholder="Xác nhận mật khẩu"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            style={styles.input}
+            secureTextEntry
+          />
+        </View>
 
         <TouchableOpacity style={styles.button} onPress={handleRegister}>
           <Text style={styles.buttonText}>Đăng ký</Text>
@@ -135,7 +131,7 @@ export default function CreateAccount(props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#ffffff",
   },
   scrollView: {
     paddingHorizontal: 24,
@@ -146,22 +142,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     width: "100%",
-    marginBottom: 30,
+    marginBottom: 40,
   },
   title: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#0F1828",
+    fontSize: 26,
+    fontWeight: "700",
+    color: "#1E1F20",
     marginLeft: 16,
   },
   input: {
     width: "100%",
-    backgroundColor: "#F7F7FC",
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    backgroundColor: "#F0F2F5",
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     fontSize: 16,
-    marginBottom: 12,
+    color: "#1E1F20",
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   row2: {
     flexDirection: "row",
@@ -169,30 +171,56 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   countryButton: {
-    backgroundColor: "#F7F7FC",
-    paddingVertical: 14,
+    backgroundColor: "#F0F2F5",
+    paddingVertical: 16,
     paddingHorizontal: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     marginRight: 10,
   },
   countryText: {
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "600",
   },
   phoneInput: {
     flex: 1,
   },
   button: {
     width: "100%",
-    backgroundColor: "#002DE3",
+    backgroundColor: "#3366FF",
     borderRadius: 30,
-    paddingVertical: 16,
+    paddingVertical: 18,
     alignItems: "center",
-    marginTop: 20,
+    marginTop: 30,
+    shadowColor: "#3366FF",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 6,
   },
   buttonText: {
     color: "#FFFFFF",
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "700",
+  },
+  inputContainer: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0F2F5",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    color: "#1E1F20",
+    paddingLeft: 12,
   },
 });
