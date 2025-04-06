@@ -9,22 +9,23 @@ import {
   Alert,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
+import { verifyOTP, resendOTP } from "../../services/authService";  // Import the verifyOTP function
 
 export default function OTP(props) {
-  const [otp, setOtp] = useState(["", "", "", ""]);
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]); // 6 OTP digits
   const inputRefs = useRef([]);
   const [timer, setTimer] = useState(25);
   const [isResendDisabled, setIsResendDisabled] = useState(true);
+  const email = props.route.params?.email;  // Get the email from the previous screen's params
 
   useEffect(() => {
-    // Bắt đầu đếm ngược khi component được render
     if (timer > 0) {
       const interval = setInterval(() => {
         setTimer((prevTime) => prevTime - 1);
       }, 1000);
       return () => clearInterval(interval);
     } else {
-      setIsResendDisabled(false); // Cho phép gửi lại mã khi hết thời gian
+      setIsResendDisabled(false);
     }
   }, [timer]);
 
@@ -36,26 +37,51 @@ export default function OTP(props) {
     newOtp[index] = text;
     setOtp(newOtp);
 
-    if (text && index < 3) {
+    if (text && index < 5) {
       inputRefs.current[index + 1].focus();
     }
   };
+  const handleResend = async () => {
+    if (isResendDisabled) return;
+  
+    try {
+      // Prepare the data for the resend OTP request
+      const data = { email: props.route.params?.email }; // Assuming the email is passed as a route parameter
+      await resendOTP(data); // Call the resend OTP API
+  
+      // Show confirmation and reset the timer
+      Alert.alert("Gửi lại mã", "Mã OTP mới đã được gửi.");
+      setTimer(25); // Reset the countdown timer to 25 seconds
+      setIsResendDisabled(true); // Disable the resend button for the next 25 seconds
+    } catch (error) {
+      console.error("❌ Lỗi khi gửi lại mã OTP:", error);
+      Alert.alert("Lỗi", "Có lỗi xảy ra khi gửi lại mã OTP.");
+    }
+  };
+  
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     const otpCode = otp.join("");
-    if (otpCode.length === 4) {
-      Alert.alert("Mã OTP", `Bạn đã nhập mã: ${otpCode}`);
+    if (otpCode.length === 6) {
+      // Prepare the request data with email and otp
+      const data = { email: email, otp: otpCode };
+
+      try {
+        const response = await verifyOTP(data); // Call the verifyOTP API
+        if (response.status === 200) {
+          Alert.alert("Success", "Mã OTP hợp lệ, đăng nhập thành công!");
+          // Navigate to the next screen after successful OTP verification
+          props.navigation.navigate("MyTabs");  // Update the target screen as needed
+        }
+      } catch (error) {
+        Alert.alert("Lỗi", "Mã OTP không hợp lệ, vui lòng thử lại.");
+      }
     } else {
       Alert.alert("Lỗi", "Vui lòng nhập đầy đủ mã OTP.");
     }
   };
 
-  const handleResend = () => {
-    if (isResendDisabled) return;
-    Alert.alert("Gửi lại mã", "Mã OTP mới đã được gửi.");
-    setTimer(25); // Reset thời gian đếm ngược về 25 giây
-    setIsResendDisabled(true);
-  };
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -67,7 +93,7 @@ export default function OTP(props) {
           >
             <Ionicons name="chevron-back" size={24} color="#0F1828" />
           </TouchableOpacity>
-          <Text style={styles.title}>Tạo tài khoản</Text>
+          <Text style={styles.title}>Mã OTP</Text>
         </View>
         <Text style={styles.subTitle}>
           Vui lòng không chia sẻ mã xác thực để tránh mất tài khoản
@@ -75,7 +101,7 @@ export default function OTP(props) {
       </View>
 
       <Text style={styles.text3}>Nhập OTP</Text>
-      <Text style={styles.text4}>Đang gọi đến số (+84) XXX XXX XXX</Text>
+      <Text style={styles.text4}>Đã gửi mã OTP đến email: {email}</Text>
 
       <View style={styles.otpContainer}>
         {otp.map((value, index) => (
@@ -161,8 +187,9 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   otpInput: {
-    width: 50,
-    height: 50,
+    width: 40,
+    height: 40,
+    margin: 3,
     textAlign: "center",
     borderWidth: 1,
     borderColor: "#002DE3",

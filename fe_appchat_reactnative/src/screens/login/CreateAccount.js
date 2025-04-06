@@ -52,7 +52,7 @@ export default function CreateAccount(props) {
       const response = await registerUser(userData);
       console.log("✅ Phản hồi từ API:", response);
 
-      navigation.replace("Login");
+      navigation.replace("OTP", { email });
     } catch (error) {
       console.error("❌ Lỗi đăng ký:", error);
     }
@@ -104,7 +104,7 @@ export default function CreateAccount(props) {
             placeholder="Số điện thoại"
             value={phone}
             onChangeText={setPhone}
-            style={[styles.input, styles.phoneInput]}
+            style={styles.input}
             keyboardType="phone-pad"
           />
         </View>
