@@ -1,64 +1,51 @@
-
 import "react-native-gesture-handler";
-import { Text, SafeAreaView, StyleSheet } from 'react-native';
-import Started from './src/screens/login/Started';
-import CreateAccount from './src/screens/login/CreateAccount';
-import OTP from './src/screens/login/OTP';
-import Login from './src/screens/login/Login';
-import MyTabs from './src/navigator/MyTabs';
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import ChatDetail from "./src/screens/chat/ChatDetail";
-
-
-// import CreateAccount2 from "./src/screens/pages/CreateAccount2";
-// import OTPVerification from "./src/screens/pages/OTPVerification";
-// import Home from "./src/screens/bottomtab/Home";
+import { Text, SafeAreaView, StyleSheet } from "react-native";
+import Started from "./src/screens/login/Started";
+import CreateAccount from "./src/screens/login/CreateAccount";
+import OTP from "./src/screens/login/OTP";
+import Login from "./src/screens/login/Login";
+import MyTabs from "./src/navigator/MyTabs";
+import { NavigationContainer } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { AuthProvider } from "./src/contexts/AuthContext";
 const Stack = createNativeStackNavigator();
-// import Contacts from "./src/screens/bottomtab/Contacts";
-// import Activity from "./src/screens/bottomtab/Activity";
-// import Account from "./src/screens/bottomtab/Account";
+
 
 export default function App() {
   return (
-    <NavigationContainer>
+    <AuthProvider>
+      <NavigationContainer>
+        <Stack.Navigator initialRouteName="Started">
+          <Stack.Screen
+            name="Started"
+            component={Started}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="CreateAccount"
+            component={CreateAccount}
+            options={{ headerShown: false }}
+          />
 
-    <Stack.Navigator initialRouteName="Started">
-      <Stack.Screen 
-        name="Started" 
-        component={Started} 
-        options={{ headerShown: false }} 
-      />
-      <Stack.Screen
-        name="CreateAccount"
-        component={CreateAccount}
-        options={{ headerShown: false }} 
-      />
-
-      <Stack.Screen
-        name="OTP"
-        component={OTP}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen 
-        name="Login" 
-        component={Login} 
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="MyTabs"
-        component={MyTabs}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ChatDetail"
-        component={ChatDetail}
-        options={{ headerShown: false }}
-      />
-      
-    </Stack.Navigator>
-  </NavigationContainer>
-
+          <Stack.Screen
+            name="OTP"
+            component={OTP}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Login"
+            component={Login}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="MyTabs"
+            component={MyTabs}
+            options={{ headerShown: false }}
+          />
+          
+        </Stack.Navigator>
+      </NavigationContainer>
+    </AuthProvider>
   );
 }
 
