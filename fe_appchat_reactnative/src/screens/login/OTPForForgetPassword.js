@@ -9,14 +9,14 @@ import {
   Alert,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { verifyOTP, resendOTP } from "../../services/authService";  // Import the verifyOTP function
+import { verifyOTP, resendOTP } from "../../services/authService";
 
-export default function OTP(props) {
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]); // 6 OTP digits
+export default function OTPForForgetPassword({ navigation, route }) {
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const inputRefs = useRef([]);
   const [timer, setTimer] = useState(25);
   const [isResendDisabled, setIsResendDisabled] = useState(true);
-  const email = props.route.params?.email;  // Get the email from the previous screen's params
+  const email = route.params?.email;
 
   useEffect(() => {
     if (timer > 0) {
@@ -30,65 +30,41 @@ export default function OTP(props) {
   }, [timer]);
 
   const handleChange = (text, index) => {
-    if (text.length > 1) {
-      text = text.slice(-1);
-    }
-    let newOtp = [...otp];
+    if (text.length > 1) text = text.slice(-1);
+    const newOtp = [...otp];
     newOtp[index] = text;
     setOtp(newOtp);
-
-    if (text && index < 5) {
-      inputRefs.current[index + 1].focus();
-    }
+    if (text && index < 5) inputRefs.current[index + 1].focus();
   };
 
   const handleResend = async () => {
     if (isResendDisabled) return;
-  
     try {
-      // Prepare the data for the resend OTP request
-      const data = { email: props.route.params?.email }; // Assuming the email is passed as a route parameter
-      await resendOTP(data); // Call the resend OTP API
-  
-      // Show confirmation and reset the timer
-      Alert.alert("Gửi lại mã", "Mã OTP mới đã được gửi.");
-      setTimer(25); // Reset the countdown timer to 25 seconds
-      setIsResendDisabled(true); // Disable the resend button for the next 25 seconds
+      await resendOTP({ email });
+      Alert.alert("Thành công", "Mã OTP mới đã được gửi.");
+      setTimer(25);
+      setIsResendDisabled(true);
     } catch (error) {
-      console.error("❌ Lỗi khi gửi lại mã OTP:", error);
-      Alert.alert("Lỗi", "Có lỗi xảy ra khi gửi lại mã OTP.");
+      console.error("❌ Lỗi gửi lại OTP:", error);
+      Alert.alert("Lỗi", "Không thể gửi lại mã OTP.");
     }
   };
 
   const handleContinue = async () => {
     const otpCode = otp.join("");
     if (otpCode.length === 6) {
-      // Prepare the request data with email and otp
-      const data = { email: email, otp: otpCode };
-
-      try {
-        const response = await verifyOTP(data); // Call the verifyOTP API
-        if (response.status === 200) {
-          Alert.alert("Thành công", "Mã OTP hợp lệ, đăng nhập thành công!");
-          // Navigate to the next screen after successful OTP verification
-          props.navigation.navigate("MyTabs");  // Update the target screen as needed
-        }
-      } catch (error) {
-        Alert.alert("Lỗi", "Mã OTP không hợp lệ, vui lòng thử lại.");
-      }
+      // Điều hướng qua trang ResetPassword và truyền email và otpCode
+      navigation.navigate("ResetPassword", { email, otp: otpCode });
     } else {
-      Alert.alert("Lỗi", "Vui lòng nhập đầy đủ mã OTP.");
+      Alert.alert("Lỗi", "Vui lòng nhập đầy đủ 6 số OTP.");
     }
   };
-
+  
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.row}>
-          <TouchableOpacity
-            onPress={() => props.navigation.goBack()}
-            style={styles.backButton}
-          >
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="chevron-back" size={24} color="#0F1828" />
           </TouchableOpacity>
           <Text style={styles.title}>Mã OTP</Text>
@@ -136,7 +112,7 @@ export default function OTP(props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#FFFFFF",
     padding: 20,
   },
   header: {
@@ -148,7 +124,6 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 0,
     marginTop: 20,
     marginLeft: 30,
   },
@@ -169,8 +144,8 @@ const styles = StyleSheet.create({
     fontSize: 25,
     fontWeight: "bold",
     textAlign: "center",
-    marginBottom: 14,
     marginTop: 30,
+    marginBottom: 14,
   },
   text4: {
     color: "#0F1828",

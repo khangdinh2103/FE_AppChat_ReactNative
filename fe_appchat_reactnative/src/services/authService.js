@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = "http://192.168.1.49:5000/api/auth"; // Đổi URL theo backend
+const API_URL = "http://192.168.1.9:5000/api/auth"; // Đổi URL theo backend
 
 export const registerUser = async (userData) => {
   try {
@@ -27,4 +27,11 @@ export const verifyOTP = async (data) => {
 
 export const resendOTP = async (data) => {
   return await axios.post(`${API_URL}/resend-otp`, data);
+};
+export const forgetPassword = async (data) => {
+  return await axios.post(`${API_URL}/forgot-password`, data);
+};
+
+export const resetPassword = async (data) => {
+  return await axios.post(`${API_URL}/reset-password`, data);
 };
