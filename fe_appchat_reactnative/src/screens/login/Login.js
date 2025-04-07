@@ -1,4 +1,5 @@
 import React, { useState, useContext } from "react";
+import { LogBox } from 'react-native';
 import {
   SafeAreaView,
   View,
@@ -15,7 +16,7 @@ import { useNavigation } from "@react-navigation/native";
 import { AuthContext } from "../../contexts/AuthContext"; // Thêm context
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { loginUser } from "../../services/authService"; // Import API đăng nhập
-
+LogBox.ignoreLogs(["Request failed with status code 400"]);
 export default function Login(props) {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
