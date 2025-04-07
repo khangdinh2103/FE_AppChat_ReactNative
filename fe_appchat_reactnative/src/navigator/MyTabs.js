@@ -73,7 +73,7 @@ const MyTabs = () => {
     >
       <Tab.Screen
         name="Tin nhắn"
-        component={ChatTabs}
+        component={Home}
         options={{ headerShown: false }}
       />
       <Tab.Screen

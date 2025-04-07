@@ -1,7 +1,6 @@
-import React, { useState } from "react";
-import { 
-  View, Text, TextInput, FlatList, Image, StyleSheet, TouchableOpacity 
-} from "react-native";
+import React, { useState, useCallback } from "react";
+import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
+import { GiftedChat } from "react-native-gifted-chat";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { useRoute, useNavigation } from "@react-navigation/native";
 
@@ -11,42 +10,30 @@ const ChatDetail = () => {
   const { name, avatar } = route.params;
 
   const [messages, setMessages] = useState([
-    { id: "1", type: "text", message: "Have a great working week!!", sender: "them", time: "09:25 AM" },
-    { id: "2", type: "text", message: "Hope you like it", sender: "them", time: "09:25 AM" },
-    { id: "3", type: "audio", duration: "00:16", sender: "them", time: "09:25 AM" },
-    { id: "4", type: "image", imageUrl: "https://via.placeholder.com/150", sender: "them", time: "09:25 AM" },
-    { id: "5", type: "text", message: "Hello! Jhon abraham", sender: "me", time: "09:25 AM" },
+    {
+      _id: 1,
+      text: "Have a great working week!!",
+      createdAt: new Date(),
+      user: { _id: 2, name: "Them", avatar },
+    },
+    {
+      _id: 2,
+      text: "Hope you like it",
+      createdAt: new Date(),
+      user: { _id: 2, name: "Them", avatar },
+    },
+    {
+      _id: 3,
+      text: "Hello! Jhon abraham",
+      createdAt: new Date(),
+      user: { _id: 1, name: "Me", avatar: "https://via.placeholder.com/150" },
+    },
   ]);
 
-  const renderMessage = ({ item, index }) => {
-    const nextMessage = messages[index + 1]; 
-    const isFirstMessageOfGroup =
-      !nextMessage || (nextMessage.sender === "me" && item.sender === "them");
-  
-    return (
-      <View 
-        style={[
-          styles.messageWrapper, 
-          item.sender === "me" ? styles.meContainer : styles.themContainer
-        ]}
-      >
-        {item.sender === "them" && isFirstMessageOfGroup && (
-          <Image source={{ uri: avatar }} style={styles.avatar} />
-        )}
-        <View style={[styles.messageContainer, item.sender === "me" ? styles.me : styles.them]}>
-          {item.sender === "them" && isFirstMessageOfGroup && (
-            <Text style={styles.senderName}>{name}</Text>
-          )}
-          {item.type === "text" && <Text style={styles.messageText}>{item.message}</Text>}
-          {item.type === "image" && (
-            <Image source={{ uri: item.imageUrl }} style={styles.messageImage} />
-          )}
-          <Text style={styles.time}>{item.time}</Text>
-        </View>
-      </View>
-    );
-  };
-  
+  const onSend = useCallback((newMessages = []) => {
+    setMessages((previousMessages) => GiftedChat.append(previousMessages, newMessages));
+  }, []);
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -63,62 +50,37 @@ const ChatDetail = () => {
         <Ionicons name="videocam-outline" size={24} color="#000" />
       </View>
 
-      {/* Chat Messages */}
-      <FlatList 
-        data={messages} 
-        keyExtractor={(item) => item.id} 
-        renderItem={renderMessage} 
-        inverted 
-        style={styles.chatList} 
+      {/* GiftedChat Component */}
+      <GiftedChat
+        messages={messages}
+        onSend={(newMessages) => onSend(newMessages)}
+        user={{ _id: 1 }} // "Me"
+        renderAvatarOnTop={true}
+        renderUsernameOnMessage={true}
       />
-
-      {/* Input Box */}
-      <View style={styles.inputContainer}>
-        <Ionicons name="happy-outline" size={24} color="#8E8E93" />
-        <TextInput style={styles.input} placeholder="Write your message" />
-        <Ionicons name="camera-outline" size={24} color="#8E8E93" />
-        <Ionicons name="mic-outline" size={24} color="#8E8E93" />
-      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: "#fff" },
-  
-    header: { flexDirection: "row", alignItems: "center", padding: 10, backgroundColor: "#fff", marginTop: 40 },
-    avatar: { width: 40, height: 40, borderRadius: 20, marginLeft: 10 },
-    headerInfo: { flex: 1, marginLeft: 10 },
-    headerName: { fontWeight: "bold", fontSize: 16 },
-    headerStatus: { color: "#8E8E93", fontSize: 12 },
-    icon: { marginHorizontal: 10 },
-  
-    // Chat List
-    chatList: { flex: 1, paddingHorizontal: 10 },
-  
-    // Tin nhắn
-    messageWrapper: { flexDirection: "row", alignItems: "flex-end", marginVertical: 5 },
-    meContainer: { justifyContent: "flex-end", alignSelf: "flex-end" },
-    themContainer: { justifyContent: "flex-start", alignSelf: "flex-start" },
-  
-    messageContainer: { maxWidth: "75%", padding: 10, borderRadius: 10 },
-    me: { alignSelf: "flex-end", backgroundColor: "#4E7DFF" }, 
-    them: { alignSelf: "flex-start", backgroundColor: "#F0F0F0" },
-  
-    // Văn bản tin nhắn
-    messageText: { color: "#000" }, // Để chữ trắng cho tin nhắn của bạn
-    themMessageText: { color: "#000" }, // Chữ đen cho tin nhắn của họ
-  
-    // Tin nhắn hình ảnh
-    messageImage: { width: 150, height: 150, borderRadius: 10 },
-  
-    // Thời gian tin nhắn
-    time: { fontSize: 10, color: "#8E8E93", marginTop: 5, alignSelf: "flex-end" },
-  
-    // Ô nhập tin nhắn
-    inputContainer: { flexDirection: "row", alignItems: "center", padding: 10, borderTopWidth: 1, borderColor: "#ddd", marginBottom: 20 },
-    input: { flex: 1, padding: 10, backgroundColor: "#f0f0f0", borderRadius: 5, marginHorizontal: 10 },
-  });
-  
+  container: { flex: 1, backgroundColor: "#fff", paddingBottom: 30 },
+
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    backgroundColor: "#fff",
+    marginTop: 40,
+  },
+  avatar: { width: 40, height: 40, borderRadius: 20, marginLeft: 10 },
+  headerInfo: { flex: 1, marginLeft: 10 },
+  headerName: { fontWeight: "bold", fontSize: 16 },
+  headerStatus: { color: "#8E8E93", fontSize: 12 },
+  icon: { marginHorizontal: 10 },
+
+  // Customize the GiftedChat messages if needed
+  messageText: { color: "#000" },
+  time: { fontSize: 10, color: "#8E8E93", marginTop: 5, alignSelf: "flex-end" },
+});
 
 export default ChatDetail;

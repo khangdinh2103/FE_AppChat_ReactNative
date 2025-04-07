@@ -5,6 +5,7 @@ import CreateAccount from "./src/screens/login/CreateAccount";
 import OTP from "./src/screens/login/OTP";
 import Login from "./src/screens/login/Login";
 import MyTabs from "./src/navigator/MyTabs";
+import ChatDetail from "./src/screens/chat/ChatDetail";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { AuthProvider } from "./src/contexts/AuthContext";
@@ -40,6 +41,11 @@ export default function App() {
           <Stack.Screen
             name="MyTabs"
             component={MyTabs}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ChatDetail"
+            component={ChatDetail}
             options={{ headerShown: false }}
           />
           
