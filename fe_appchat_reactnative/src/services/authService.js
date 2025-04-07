@@ -28,3 +28,10 @@ export const verifyOTP = async (data) => {
 export const resendOTP = async (data) => {
   return await axios.post(`${API_URL}/resend-otp`, data);
 };
+export const forgetPassword = async (data) => {
+  return await axios.post(`${API_URL}/forgot-password`, data);
+};
+
+export const resetPassword = async (data) => {
+  return await axios.post(`${API_URL}/reset-password`, data);
+};

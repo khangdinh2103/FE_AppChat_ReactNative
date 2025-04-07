@@ -112,7 +112,7 @@ export default function Login(props) {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity onPress={() => alert("Lấy lại mật khẩu")}>
+        <TouchableOpacity onPress={() => navigation.navigate("ForgotPasswordScreen")}>
           <Text style={styles.forgotPassword}>Quên mật khẩu?</Text>
         </TouchableOpacity>
 
