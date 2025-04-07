@@ -24,7 +24,9 @@ const ProfileScreen = () => {
           }}
           size={90}
         />
-        <TouchableOpacity style={styles.editIcon}>
+        <TouchableOpacity style={styles.editIcon}
+         onPress={() => navigation.navigate("EditProfile")} 
+        >
           <Text style={styles.editText}>✏️</Text>
         </TouchableOpacity>
       </View>
