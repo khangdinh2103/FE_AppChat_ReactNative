@@ -18,16 +18,40 @@ export default function ResetPassword({ route, navigation }) {
   const [newPassword, setNewPassword] = useState(""); // State cho mật khẩu mới
   const [confirmPassword, setConfirmPassword] = useState(""); // State cho xác nhận mật khẩu
   const [showPassword, setShowPassword] = useState(false); // State cho việc hiển thị mật khẩu
+  // Add new state for errors
+  const [newPasswordError, setNewPasswordError] = useState("");
+  const [confirmPasswordError, setConfirmPasswordError] = useState("");
 
-
-  const handleResetPassword = async () => {
-    if (!newPassword || newPassword.length < 6) {
-      Alert.alert("Lỗi", "Mật khẩu mới phải có ít nhất 6 ký tự.");
-      return;
+  // Add validation functions
+  const validatePassword = (text) => {
+    setNewPassword(text);
+    if (!text) {
+      setNewPasswordError("Vui lòng nhập mật khẩu mới.");
+    } else if (text.length < 6) {
+      setNewPasswordError("Mật khẩu phải có ít nhất 6 ký tự.");
+    } else {
+      setNewPasswordError("");
     }
+  };
 
-    if (newPassword !== confirmPassword) {
-      Alert.alert("Lỗi", "Mật khẩu xác nhận không khớp.");
+  const validateConfirmPassword = (text) => {
+    setConfirmPassword(text);
+    if (!text) {
+      setConfirmPasswordError("Vui lòng xác nhận mật khẩu.");
+    } else if (text !== newPassword) {
+      setConfirmPasswordError("Mật khẩu không khớp.");
+    } else {
+      setConfirmPasswordError("");
+    }
+  };
+
+  // Update handleResetPassword to use new validation
+  const handleResetPassword = async () => {
+    // Validate both fields
+    validatePassword(newPassword);
+    validateConfirmPassword(confirmPassword);
+
+    if (newPasswordError || confirmPasswordError || !newPassword || !confirmPassword) {
       return;
     }
 
@@ -49,10 +73,7 @@ export default function ResetPassword({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={28} color="#0F1828" />
@@ -63,13 +84,13 @@ export default function ResetPassword({ route, navigation }) {
         <Text style={styles.subtitle}>Vui lòng nhập mật khẩu mới của bạn</Text>
 
         {/* New Password Input */}
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, newPasswordError && styles.inputError]}>
           <Ionicons name="lock-closed-outline" size={20} color="#8E8E93" />
           <TextInput
             placeholder="Mật khẩu mới"
             placeholderTextColor="#8E8E93"
             value={newPassword}
-            onChangeText={setNewPassword}
+            onChangeText={validatePassword}
             style={styles.input}
             secureTextEntry={!showPassword}
           />
@@ -81,15 +102,16 @@ export default function ResetPassword({ route, navigation }) {
             />
           </TouchableOpacity>
         </View>
+        {newPasswordError ? <Text style={styles.errorText}>{newPasswordError}</Text> : null}
 
         {/* Confirm Password Input */}
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, confirmPasswordError && styles.inputError]}>
           <Ionicons name="lock-closed-outline" size={20} color="#8E8E93" />
           <TextInput
             placeholder="Xác nhận mật khẩu"
             placeholderTextColor="#8E8E93"
             value={confirmPassword}
-            onChangeText={setConfirmPassword}
+            onChangeText={validateConfirmPassword}
             style={styles.input}
             secureTextEntry={!showPassword}
           />
@@ -101,6 +123,7 @@ export default function ResetPassword({ route, navigation }) {
             />
           </TouchableOpacity>
         </View>
+        {confirmPasswordError ? <Text style={styles.errorText}>{confirmPasswordError}</Text> : null}
 
         {/* Reset Password Button */}
         <TouchableOpacity style={styles.resetButton} onPress={handleResetPassword}>
@@ -167,5 +190,18 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  
+  // Add new styles for validation
+  inputError: {
+    borderColor: "red",
+    borderWidth: 1,
+  },
+  errorText: {
+    color: "red",
+    fontSize: 12,
+    marginTop: -12,
+    marginBottom: 12,
+    marginLeft: 16,
   },
 });

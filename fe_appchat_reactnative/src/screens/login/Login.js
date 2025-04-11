@@ -24,6 +24,9 @@ export default function Login(props) {
   const [countryCode, setCountryCode] = useState("VN");
   const [visible, setVisible] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+
   const navigation = useNavigation();
   const { login } = useContext(AuthContext); // Sử dụng context để cập nhật trạng thái đăng nhập
 
@@ -34,33 +37,46 @@ export default function Login(props) {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert("Lỗi", "Vui lòng nhập đầy đủ email và mật khẩu.");
+      Alert.alert("Lỗi", "Vui lòng nhập đầy đủ thông tin.");
       return;
     }
-
+  
     try {
-      const response = await loginUser({ email, password });
-      // 🔍 Kiểm tra phản hồi từ API
-      console.log("API Response:", response.data);
-
-      // ✅ Truy xuất accessToken từ `data`
+      // Truyền 'email' như là 'phone'
+      const response = await loginUser({ email: email, password });
+  
       const token = response.data?.data?.accessToken;
       const user = response.data?.data?.user;
-
+  
       if (!token || !user) {
         throw new Error("Dữ liệu phản hồi không hợp lệ");
       }
-
+  
       await AsyncStorage.setItem("accessToken", token);
       await AsyncStorage.setItem("user", JSON.stringify(user));
       login(user);
       navigation.navigate("MyTabs");
+  
     } catch (error) {
-      Alert.alert("Lỗi đăng nhập", "Email hoặc mật khẩu không đúng.");
-      console.error("Lỗi đăng nhập:", error);
+      console.log("Lỗi đăng nhập:", error);
+  
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Số điện thoại hoặc mật khẩu không đúng.";
+  
+      if (message.toLowerCase().includes("mật khẩu")) {
+        setPasswordError("Mật khẩu không đúng");
+        setEmailError("");
+      } else {
+        setEmailError("Số điện thoại hoặc tài khoản không tồn tại");
+        setPasswordError("");
+      }
+  
+      Alert.alert("Lỗi đăng nhập", message);
     }
   };
-
+  
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -80,26 +96,44 @@ export default function Login(props) {
         </Text>
 
         {/* Email */}
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, emailError && { borderColor: "red", borderWidth: 1 }]}>
           <Ionicons name="mail-outline" size={20} color="#8E8E93" />
           <TextInput
             placeholder="Email"
             placeholderTextColor="#8E8E93"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(text) => {
+              setEmail(text);
+              if (emailError) setEmailError(""); // Xóa lỗi khi đang gõ lại
+            }}
+            onBlur={() => {
+              if (!email) setEmailError("Vui lòng nhập email");
+            }}
             style={styles.input}
             keyboardType="email-address"
           />
         </View>
+        {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
 
         {/* Password */}
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, passwordError && { borderColor: "red", borderWidth: 1 }]}>
           <Ionicons name="lock-closed-outline" size={20} color="#8E8E93" />
           <TextInput
             placeholder="Mật khẩu"
             placeholderTextColor="#8E8E93"
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(text) => {
+              setPassword(text);
+              if (passwordError) setPasswordError("");
+            }}
+            onBlur={() => {
+              if (!password) {
+                setPasswordError("Vui lòng nhập mật khẩu");
+              } else if (password.length < 6) {
+                setPasswordError("Mật khẩu phải có ít nhất 6 ký tự");
+              }
+            }}
+            
             style={styles.input}
             secureTextEntry={!showPassword}
           />
@@ -111,6 +145,7 @@ export default function Login(props) {
             />
           </TouchableOpacity>
         </View>
+        {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
 
         <TouchableOpacity onPress={() => navigation.navigate("ForgotPasswordScreen")}>
           <Text style={styles.forgotPassword}>Quên mật khẩu?</Text>
@@ -176,6 +211,13 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     fontSize: 14,
   },
+  errorText: {
+    color: "red",
+    fontSize: 12,
+    marginTop: -12,
+    marginBottom: 12,
+    marginLeft: 8,
+  },  
   loginButton: {
     backgroundColor: "#002DE3",
     paddingVertical: 18,

@@ -6,10 +6,25 @@ import { forgetPassword } from "../../services/authService"; // Đường dẫn 
 const ForgotPasswordScreen = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
+  // Add new state for email error
+  const [emailError, setEmailError] = useState("");
+
+  // Add email validation function
+  const validateEmail = (text) => {
+    setEmail(text);
+    if (!text) {
+      setEmailError("Vui lòng nhập email.");
+    } else if (!/\S+@\S+\.\S+/.test(text)) {
+      setEmailError("Email không hợp lệ.");
+    } else {
+      setEmailError("");
+    }
+  };
 
   const handleForgotPassword = async () => {
-    if (!email) {
-      Alert.alert("Lỗi", "Vui lòng nhập email");
+    // Validate email before submitting
+    validateEmail(email);
+    if (emailError || !email) {
       return;
     }
 
@@ -21,7 +36,8 @@ const ForgotPasswordScreen = ({ navigation }) => {
       // Điều hướng tới màn hình OTPForForgetPassword
       navigation.navigate("OTPForForgetPassword", { email: email });
     } catch (error) {
-      Alert.alert("Lỗi", error.message || "Gửi email thất bại.");
+      Alert.alert("Lỗi", error?.response?.data?.message ||
+        error?.message || "Gửi email thất bại.");
     } finally {
       setLoading(false);
     }
@@ -42,19 +58,20 @@ const ForgotPasswordScreen = ({ navigation }) => {
           Nhập email của bạn để nhận mã OTP.
         </Text>
 
-        {/* Email Input */}
-        <View style={styles.inputContainer}>
+        {/* Email Input with validation */}
+        <View style={[styles.inputContainer, emailError && styles.inputError]}>
           <Ionicons name="mail-outline" size={20} color="#8E8E93" />
           <TextInput
             placeholder="Nhập email của bạn"
             placeholderTextColor="#8E8E93"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={validateEmail}
             style={styles.input}
             keyboardType="email-address"
             autoCapitalize="none"
           />
         </View>
+        {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
 
         {/* Button */}
         <TouchableOpacity style={styles.button} onPress={handleForgotPassword} disabled={loading}>
@@ -127,6 +144,18 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  // Add new styles for validation
+  inputError: {
+    borderColor: "red",
+    borderWidth: 1,
+  },
+  errorText: {
+    color: "red",
+    fontSize: 12,
+    marginTop: -12,
+    marginBottom: 12,
+    marginLeft: 16,
   },
 });
 
