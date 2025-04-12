@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useContext, useState } from "react";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import {
   View,
@@ -11,36 +11,63 @@ import {
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import MainLayout from "../../components/MainLayout";
+import { AuthContext } from "../../contexts/AuthContext";
 
-const messages = [
-  {
-    id: "1",
-    name: "Athalia Putri",
-    message: "Good morning, did you sleep well?",
-    time: "Today",
-    unread: 1,
-    avatar: "https://randomuser.me/api/portraits/women/1.jpg",
-  },
-  {
-    id: "2",
-    name: "Raki Devon",
-    message: "How is it going?",
-    time: "17/6",
-    unread: 0,
-    avatar: "",
-  },
-  {
-    id: "3",
-    name: "Erlan Sadewa",
-    message: "Alright, noted",
-    time: "17/6",
-    unread: 1,
-    avatar: "https://randomuser.me/api/portraits/men/2.jpg",
-  },
-];
+// const messages = [
+//   {
+//     id: "1",
+//     name: "Athalia Putri",
+//     message: "Good morning, did you sleep well?",
+//     time: "Today",
+//     unread: 1,
+//     avatar: "https://randomuser.me/api/portraits/women/1.jpg",
+//   },
+//   {
+//     id: "2",
+//     name: "Raki Devon",
+//     message: "How is it going?",
+//     time: "17/6",
+//     unread: 0,
+//     avatar: "",
+//   },
+//   {
+//     id: "3",
+//     name: "Erlan Sadewa",
+//     message: "Alright, noted",
+//     time: "17/6",
+//     unread: 1,
+//     avatar: "https://randomuser.me/api/portraits/men/2.jpg",
+//   },
+// ];
 
 const Home = () => {
   const navigation = useNavigation();
+  const { searchUsersByQuery, searchResults } = useContext(AuthContext);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [displayData, setDisplayData] = useState([]);
+
+  const handleSearch = async (text) => {
+    setSearchQuery(text);
+    if (text.trim() === '') {
+      setDisplayData([]);
+      return;
+    }
+
+    try {
+      await searchUsersByQuery(text);
+      const formattedResults = searchResults.map(user => ({
+        id: user._id,
+        name: user.name,
+        message: user.phone || '', 
+        time: "Now",
+        unread: 0,
+        avatar: user.primary_avatar || '',
+      }));
+      setDisplayData(formattedResults);
+    } catch (error) {
+      console.error('Search error:', error);
+    }
+  };
   const renderItem = ({ item }) => (
     <TouchableOpacity
       style={styles.chatItem}
@@ -69,6 +96,8 @@ const Home = () => {
             placeholder="Tìm kiếm"
             placeholderTextColor="#fff"
             style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={handleSearch}
           />
           <Ionicons name="qr-code-outline" size={20} color="#fff" />
           
@@ -76,6 +105,7 @@ const Home = () => {
             <Ionicons name="add-outline" size={20} color="#fff" marginLeft={7}/>
           </TouchableOpacity>
         </View>
+
         <View style={styles.tabs}>
           <TouchableOpacity>
             <Text style={styles.activeTab}>Ưu tiên</Text>
@@ -85,8 +115,9 @@ const Home = () => {
           </TouchableOpacity>
           <Ionicons name="swap-vertical-outline" size={20} color="#8E8E93" />
         </View>
+
         <FlatList
-          data={messages}
+          data={displayData}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           style={styles.chatList}

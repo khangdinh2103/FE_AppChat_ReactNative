@@ -4,6 +4,7 @@ import {
   loginUser,
   updateUser,
   getUserByIdOrEmail,
+  searchUsers,
 } from "../services/authService";
 
 export const AuthContext = createContext();
@@ -11,6 +12,7 @@ export const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchResults, setSearchResults] = useState([]);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -79,6 +81,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const searchUsersByQuery = async (query) => {
+    try {
+      const results = await searchUsers(query);
+      setSearchResults(results);
+      return results;
+    } catch (error) {
+      console.error("Lỗi tìm kiếm người dùng:", error);
+      throw error;
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -88,6 +101,8 @@ export const AuthProvider = ({ children }) => {
         updateUserProfile,
         fetchUserByIdOrEmail,
         isLoading,
+        searchUsersByQuery, // Add this function
+        searchResults,
       }}
     >
       {children}
