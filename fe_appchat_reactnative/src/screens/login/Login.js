@@ -77,12 +77,20 @@ export default function Login(props) {
     }
   };
   
+  const validateEmail = (text) => {
+    setEmail(text);
+    if (!text) {
+      setEmailError("Vui lòng nhập email");
+    } else if (!/\S+@\S+\.\S+/.test(text)) {
+      setEmailError("Email không hợp lệ");
+    } else {
+      setEmailError("");
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.row}>
           <TouchableOpacity onPress={() => props.navigation.goBack()}>
             <Ionicons name="chevron-back" size={28} color="#0F1828" />
@@ -102,15 +110,10 @@ export default function Login(props) {
             placeholder="Email"
             placeholderTextColor="#8E8E93"
             value={email}
-            onChangeText={(text) => {
-              setEmail(text);
-              if (emailError) setEmailError(""); // Xóa lỗi khi đang gõ lại
-            }}
-            onBlur={() => {
-              if (!email) setEmailError("Vui lòng nhập email");
-            }}
+            onChangeText={validateEmail}
             style={styles.input}
             keyboardType="email-address"
+            autoCapitalize="none"
           />
         </View>
         {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
