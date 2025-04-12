@@ -7,28 +7,25 @@ let socket;
 export const initializeSocket = async () => {
   try {
     const token = await AsyncStorage.getItem('accessToken');
+    const user = JSON.parse(await AsyncStorage.getItem('user'));
     
     socket = io(API_URL, {
       auth: { token },
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      timeout: 10000,
-      forceNew: true,
-      path: '/socket.io'
+      timeout: 10000
     });
 
     socket.on('connect', () => {
-      console.log('Socket connected successfully:', socket.id);
+      console.log('Socket connected:', socket.id);
+      if (user?._id) {
+        socket.emit('registerUser', user._id);
+      }
     });
 
-    socket.on('connect_error', (error) => {
-      console.error('Socket connection error details:', error.message);
-      // Try polling if websocket fails
-      if (socket.io.opts.transports.indexOf('polling') === -1) {
-        socket.io.opts.transports = ['polling', 'websocket'];
-      }
+    // Add specific event logging
+    socket.on('receiveMessage', (data) => {
+      console.log('Socket received message:', data);
     });
 
     return socket;
@@ -37,7 +34,10 @@ export const initializeSocket = async () => {
   }
 };
 
-export const getSocket = () => socket;
+export const emitMessage = (messageData) => {
+  if (!socket) return;
+  socket.emit('sendMessage', messageData);
+};
 
 export const subscribeToMessages = (callback) => {
   if (!socket) return;

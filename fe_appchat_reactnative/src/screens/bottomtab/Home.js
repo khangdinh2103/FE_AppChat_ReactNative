@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, {useRef, useState, useEffect, useContext } from "react";
 import {
   View,
   Text,
@@ -14,13 +14,36 @@ import Ionicons from "react-native-vector-icons/Ionicons";
 import MainLayout from "../../components/MainLayout";
 import { AuthContext } from "../../contexts/AuthContext";
 import { getConversations } from "../../services/chatService";
+import { initializeSocket, emitMessage, subscribeToMessages } from "../../services/socketService";
 
 const Home = () => {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigation = useNavigation();
   const { user } = useContext(AuthContext);
+  const socketRef = useRef(null);
 
+  useEffect(() => {
+    const setupSocket = async () => {
+      const socketInstance = await initializeSocket();
+      socketRef.current = socketInstance;
+  
+      if (socketInstance) {
+        socketInstance.on('receiveMessage', (newMessage) => {
+          console.log('New message received in Home screen:', newMessage);
+          fetchConversations(); // Cập nhật lại danh sách chat
+        });
+      }
+    };
+  
+    setupSocket();
+  
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.off('receiveMessage');
+      }
+    };
+  }, []);
   useEffect(() => {
     fetchConversations();
   }, []);
