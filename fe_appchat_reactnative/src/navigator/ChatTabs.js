@@ -3,7 +3,7 @@ import "react-native-gesture-handler";
 import { createStackNavigator } from "@react-navigation/stack";
 // import Account from "../../src/screens/bottomtab/Account";
 // import ProfileScreen from "../../src/screens/pages/ProfileScreen";
-// import EditProfile from "../screens/pages/EditProfile"
+import EditProfile from "../screens/pages/EditProfile"
 import Home from "../screens/bottomtab/Home";
 import ChatDetail from "../screens/chat/ChatDetail";
 

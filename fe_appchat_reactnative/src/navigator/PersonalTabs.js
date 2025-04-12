@@ -3,7 +3,7 @@ import "react-native-gesture-handler";
 import { createStackNavigator } from "@react-navigation/stack";
 import Account from "../../src/screens/bottomtab/Account";
 import ProfileScreen from "../../src/screens/pages/ProfileScreen";
-// import EditProfile from "../screens/pages/EditProfile"
+import EditProfile from "../screens/pages/EditProfile"
 
 const Stack = createStackNavigator();
 
@@ -17,7 +17,7 @@ const PersonalTabs = () => {
     >
       <Stack.Screen name="Account" component={Account} />
       <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
-      {/* <Stack.Screen name="EditProfile" component={EditProfile} /> */}
+      <Stack.Screen name="EditProfile" component={EditProfile} />
     </Stack.Navigator>
   );
 };
