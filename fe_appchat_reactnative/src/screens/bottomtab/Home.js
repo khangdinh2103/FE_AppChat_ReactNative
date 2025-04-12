@@ -70,8 +70,11 @@ const Home = () => {
             placeholderTextColor="#fff"
             style={styles.searchInput}
           />
-          <Ionicons name="qr-code-outline"  size={20} color="#fff" />
-          <Ionicons name="add-outline"  size={20} color="#fff" marginLeft={7}/>
+          <Ionicons name="qr-code-outline" size={20} color="#fff" />
+          
+          <TouchableOpacity onPress={() => navigation.navigate('AddFriend')}>
+            <Ionicons name="add-outline" size={20} color="#fff" marginLeft={7}/>
+          </TouchableOpacity>
         </View>
         <View style={styles.tabs}>
           <TouchableOpacity>

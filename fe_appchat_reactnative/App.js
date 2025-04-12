@@ -9,11 +9,11 @@ import ChatDetail from "./src/screens/chat/ChatDetail";
 import ForgotPasswordScreen from "./src/screens/login/ForgetPassword";
 import OTPForForgetPassword from "./src/screens/login/OTPForForgetPassword";
 import ResetPassword from "./src/screens/login/ResetPassword";
+import AddFriend from "./src/screens/contacts/AddFriend";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { AuthProvider } from "./src/contexts/AuthContext";
 const Stack = createNativeStackNavigator();
-
 
 export default function App() {
   return (
@@ -64,6 +64,12 @@ export default function App() {
           <Stack.Screen
             name="ResetPassword"
             component={ResetPassword}
+            options={{ headerShown: false }}
+          />
+          
+          <Stack.Screen
+            name="AddFriend"
+            component={AddFriend}
             options={{ headerShown: false }}
           />
           
