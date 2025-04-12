@@ -42,34 +42,42 @@ export default function Login(props) {
     }
   
     try {
-      // Truyền 'email' như là 'phone'
       const response = await loginUser({ email: email, password });
-  
-      const token = response.data?.data?.accessToken;
-      const user = response.data?.data?.user;
-  
-      if (!token || !user) {
-        throw new Error("Dữ liệu phản hồi không hợp lệ");
+
+
+      if (response.data?.status === 'success') {
+        const { accessToken, user } = response.data.data;
+        
+        // Store token and user data
+        await AsyncStorage.multiSet([
+          ['accessToken', accessToken],
+          ['user', JSON.stringify(user)]
+        ]);
+
+        // Update auth context with both user and token
+        login({ user, accessToken });
+
+        // Use reset instead of navigate to prevent going back
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MyTabs' }],
+        });
+      } else {
+        throw new Error(response.data?.message || "Đăng nhập thất bại");
       }
-  
-      await AsyncStorage.setItem("accessToken", token);
-      await AsyncStorage.setItem("user", JSON.stringify(user));
-      login(user);
-      navigation.navigate("MyTabs");
-  
     } catch (error) {
-      console.log("Lỗi đăng nhập:", error);
+      console.log("Lỗi đăng nhập:", error.response?.data || error);
   
       const message =
         error?.response?.data?.message ||
         error?.message ||
-        "Số điện thoại hoặc mật khẩu không đúng.";
+        "Email hoặc mật khẩu không đúng.";
   
       if (message.toLowerCase().includes("mật khẩu")) {
         setPasswordError("Mật khẩu không đúng");
         setEmailError("");
       } else {
-        setEmailError("Số điện thoại hoặc tài khoản không tồn tại");
+        setEmailError("Email không tồn tại");
         setPasswordError("");
       }
   

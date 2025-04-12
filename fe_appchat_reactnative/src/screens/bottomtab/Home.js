@@ -1,5 +1,4 @@
-import React from "react";
-import { useRoute, useNavigation } from "@react-navigation/native";
+import React, { useState, useEffect, useContext } from "react";
 import {
   View,
   Text,
@@ -8,57 +7,91 @@ import {
   Image,
   StyleSheet,
   TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import MainLayout from "../../components/MainLayout";
-
-const messages = [
-  {
-    id: "1",
-    name: "Athalia Putri",
-    message: "Good morning, did you sleep well?",
-    time: "Today",
-    unread: 1,
-    avatar: "https://randomuser.me/api/portraits/women/1.jpg",
-  },
-  {
-    id: "2",
-    name: "Raki Devon",
-    message: "How is it going?",
-    time: "17/6",
-    unread: 0,
-    avatar: "",
-  },
-  {
-    id: "3",
-    name: "Erlan Sadewa",
-    message: "Alright, noted",
-    time: "17/6",
-    unread: 1,
-    avatar: "https://randomuser.me/api/portraits/men/2.jpg",
-  },
-];
+import { AuthContext } from "../../contexts/AuthContext";
+import { getConversations } from "../../services/chatService";
 
 const Home = () => {
+  const [conversations, setConversations] = useState([]);
+  const [loading, setLoading] = useState(true);
   const navigation = useNavigation();
-  const renderItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.chatItem}
-      onPress={() => navigation.navigate("ChatDetail", { name: item.name, avatar: item.avatar })}
-    >
-      {item.avatar ? (
-        <Image source={{ uri: item.avatar }} style={styles.avatar} />
-      ) : (
-        <View style={[styles.avatar, styles.avatarPlaceholder]}>
-          <Text style={styles.avatarText}>{item.name.charAt(0)}</Text>
+  const { user } = useContext(AuthContext);
+
+  useEffect(() => {
+    fetchConversations();
+  }, []);
+
+  const fetchConversations = async () => {
+    try {
+      setLoading(true);
+      const response = await getConversations();
+      // console.log("Conversations response:", response);
+      if (response.status === "success") {
+        setConversations(response.data);
+      }
+    } catch (error) {
+      console.error("Error fetching conversations:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderItem = ({ item }) => {
+    const otherParticipant = item.participants.find(
+      (p) => p.user_id !== user._id
+    );
+
+    return (
+      <TouchableOpacity
+        style={styles.chatItem}
+        // In renderItem function
+        onPress={() =>
+          navigation.navigate("ChatDetail", {
+            conversationId: item._id,
+            name: otherParticipant.name,
+            avatar: otherParticipant.primary_avatar,
+            receiverId: otherParticipant.user_id  // Change userId to receiverId
+          })
+        }
+      >
+        {otherParticipant.primary_avatar ? (
+          // console.log("Avatar URL:", otherParticipant.primary_avatar),
+          <Image
+            source={{ uri: otherParticipant.primary_avatar }}
+            style={styles.avatar}
+          />
+        ) : (
+          <View style={[styles.avatar, styles.avatarPlaceholder]}>
+            <Text style={styles.avatarText}>
+              {otherParticipant.name.charAt(0)}
+            </Text>
+          </View>
+        )}
+        <View style={styles.chatContent}>
+          <Text style={styles.chatName}>{otherParticipant.name}</Text>
+          <Text style={styles.chatMessage}>
+            {item.last_message
+              ? item.last_message.content
+              : "Bắt đầu cuộc trò chuyện"}
+          </Text>
         </View>
-      )}
-      <View style={styles.chatContent}>
-        <Text style={styles.chatName}>{item.name}</Text>
-        <Text style={styles.chatMessage}>{item.message}</Text>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
+
+  if (loading) {
+    return (
+      <MainLayout>
+        <View style={[styles.container, styles.loadingContainer]}>
+          <ActivityIndicator size="large" color="#4E7DFF" />
+        </View>
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout>
@@ -71,11 +104,16 @@ const Home = () => {
             style={styles.searchInput}
           />
           <Ionicons name="qr-code-outline" size={20} color="#fff" />
-          
-          <TouchableOpacity onPress={() => navigation.navigate('AddFriend')}>
-            <Ionicons name="add-outline" size={20} color="#fff" marginLeft={7}/>
+          <TouchableOpacity onPress={() => navigation.navigate("AddFriend")}>
+            <Ionicons
+              name="add-outline"
+              size={20}
+              color="#fff"
+              style={{ marginLeft: 7 }}
+            />
           </TouchableOpacity>
         </View>
+
         <View style={styles.tabs}>
           <TouchableOpacity>
             <Text style={styles.activeTab}>Ưu tiên</Text>
@@ -85,11 +123,14 @@ const Home = () => {
           </TouchableOpacity>
           <Ionicons name="swap-vertical-outline" size={20} color="#8E8E93" />
         </View>
+
         <FlatList
-          data={messages}
-          keyExtractor={(item) => item.id}
+          data={conversations}
+          keyExtractor={(item) => item._id}
           renderItem={renderItem}
           style={styles.chatList}
+          refreshing={loading}
+          onRefresh={fetchConversations}
         />
       </View>
     </MainLayout>
@@ -162,26 +203,9 @@ const styles = StyleSheet.create({
   chatMessage: {
     color: "#8E8E93",
   },
-  chatMeta: {
-    alignItems: "flex-end",
-  },
-  chatTime: {
-    color: "#8E8E93",
-    fontSize: 12,
-  },
-  unreadBadge: {
-    backgroundColor: "#4E7DFF",
-    borderRadius: 10,
-    width: 20,
-    height: 20,
-    alignItems: "center",
+  loadingContainer: {
     justifyContent: "center",
-    marginTop: 5,
-  },
-  unreadText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "bold",
+    alignItems: "center",
   },
 });
 
