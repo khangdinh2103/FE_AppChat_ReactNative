@@ -1,4 +1,5 @@
 import React from "react";
+import { useRoute, useNavigation } from "@react-navigation/native";
 import {
   View,
   Text,
@@ -39,10 +40,11 @@ const messages = [
 ];
 
 const Home = () => {
+  const navigation = useNavigation();
   const renderItem = ({ item }) => (
     <TouchableOpacity
       style={styles.chatItem}
-      onPress={() => console.log(`Clicked on ${item.name}`)}
+      onPress={() => navigation.navigate("ChatDetail", { name: item.name, avatar: item.avatar })}
     >
       {item.avatar ? (
         <Image source={{ uri: item.avatar }} style={styles.avatar} />
@@ -89,7 +91,8 @@ const Home = () => {
             placeholderTextColor="#fff"
             style={styles.searchInput}
           />
-          <Ionicons name="options-outline" size={20} color="#fff" />
+          <Ionicons name="qr-code-outline"  size={20} color="#fff" />
+          <Ionicons name="add-outline"  size={20} color="#fff" marginLeft={7}/>
         </View>
         <View style={styles.tabs}>
           <TouchableOpacity>
@@ -98,7 +101,7 @@ const Home = () => {
           <TouchableOpacity>
             <Text style={styles.inactiveTab}>Khác</Text>
           </TouchableOpacity>
-          <Ionicons name="filter-outline" size={20} color="#8E8E93" />
+          <Ionicons name="swap-vertical-outline" size={20} color="#8E8E93" />
         </View>
         <FlatList
           data={messages}
@@ -144,20 +147,20 @@ const styles = StyleSheet.create({
     color: "#8E8E93",
   },
   chatList: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 15,
   },
   chatItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 15,
     borderBottomWidth: 1,
     borderBottomColor: "#E0E0E0",
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 10,
+    width: 45,
+    height: 45,
+    borderRadius: 15,
+    marginRight: 20,
   },
   avatarPlaceholder: {
     backgroundColor: "#4E7DFF",
