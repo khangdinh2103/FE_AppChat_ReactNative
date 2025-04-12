@@ -1,47 +1,92 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useContext } from "react";
 import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
 import { GiftedChat } from "react-native-gifted-chat";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { AuthContext } from "../../contexts/AuthContext";
+import { getMessages, sendMessage } from "../../services/chatService";
 
 const ChatDetail = () => {
   const route = useRoute();
   const navigation = useNavigation();
-  const { name, avatar } = route.params;
+  const { conversationId, name, avatar, receiverId } = route.params;  // Add receiverId
+  const { user } = useContext(AuthContext);
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const [messages, setMessages] = useState([
-    {
-      _id: 1,
-      text: "Have a great working week!!",
-      createdAt: new Date(),
-      user: { _id: 2, name: "Them", avatar },
-    },
-    {
-      _id: 2,
-      text: "Hope you like it",
-      createdAt: new Date(),
-      user: { _id: 2, name: "Them", avatar },
-    },
-    {
-      _id: 3,
-      text: "Hello! Jhon abraham",
-      createdAt: new Date(),
-      user: { _id: 1, name: "Me", avatar: "https://via.placeholder.com/150" },
-    },
-  ]);
+  useEffect(() => {
+    if (conversationId) {
+      // console.log('Fetching messages for conversation:', conversationId);
+      fetchMessages();
+    }
+  }, [conversationId]);
 
-  const onSend = useCallback((newMessages = []) => {
-    setMessages((previousMessages) => GiftedChat.append(previousMessages, newMessages));
-  }, []);
+  const fetchMessages = async () => {
+    try {
+      setLoading(true);
+      const response = await getMessages(conversationId);
+      // console.log('Response data:', response.data); // Debug log
+      
+      if (response?.data?.status === 'success') {
+        const formattedMessages = response.data.data
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+          .map(msg => {
+            console.log('Processing message:', msg); // Debug log
+            return {
+              _id: msg._id,
+              text: msg.content,
+              createdAt: new Date(msg.timestamp),
+              user: {
+                _id: msg.sender_id._id || msg.sender_id, // Handle both object and string ID
+                name: msg.sender_id.name || name, // Fallback to conversation name
+                avatar: msg.sender_id.primary_avatar || avatar // Fallback to conversation avatar
+              }
+            };
+          });
+        console.log('Formatted messages:', formattedMessages); // Debug log
+        setMessages(formattedMessages);
+      }
+    } catch (error) {
+      console.error('Error details:', error.response?.data || error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onSend = useCallback(async (newMessages = []) => {
+    const messageText = newMessages[0].text;
+    try {
+      const response = await sendMessage({
+        receiverId: receiverId,      // Changed from receiver_id to receiverId
+        message_type: 'text',
+        content: messageText,
+        file_id: null               // Added file_id field
+      });
+      
+      if (response?.data?.status === 'success') {
+        setMessages(previousMessages =>
+          GiftedChat.append(previousMessages, newMessages)
+        );
+        fetchMessages();
+      }
+    } catch (error) {
+      console.error('Error sending message:', error.response?.data || error.message);
+    }
+  }, [receiverId]); // Update dependency array
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
-        <Image source={{ uri: avatar }} style={styles.avatar} />
+        {avatar ? (
+          <Image source={{ uri: avatar }} style={styles.avatar} />
+        ) : (
+          <View style={[styles.avatar, styles.avatarPlaceholder]}>
+            <Text style={styles.avatarText}>{name.charAt(0)}</Text>
+          </View>
+        )}
         <View style={styles.headerInfo}>
           <Text style={styles.headerName}>{name}</Text>
           <Text style={styles.headerStatus}>Đang hoạt động</Text>
@@ -50,13 +95,30 @@ const ChatDetail = () => {
         <Ionicons name="videocam-outline" size={24} color="#000" />
       </View>
 
-      {/* GiftedChat Component */}
       <GiftedChat
         messages={messages}
-        onSend={(newMessages) => onSend(newMessages)}
-        user={{ _id: 1 }} // "Me"
-        renderAvatarOnTop={true}
-        renderUsernameOnMessage={true}
+        onSend={onSend}
+        user={{
+          _id: user._id,
+          name: user.name,
+          avatar: user.avatar
+        }}
+        renderAvatarOnTop
+        renderUsernameOnMessage
+        placeholder="Nhập tin nhắn..."
+        locale="vi"
+        alignTop={false}
+        inverted={true}
+
+        bottomOffset={80}
+        minInputToolbarHeight={60}
+        listViewProps={{
+          contentContainerStyle: {
+            flexGrow: 1,
+            justifyContent: messages.length > 10 ? 'flex-start' : 'flex-end',
+            paddingBottom: 20
+          }
+        }}
       />
     </View>
   );

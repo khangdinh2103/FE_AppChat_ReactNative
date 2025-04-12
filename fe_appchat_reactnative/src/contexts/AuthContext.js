@@ -5,37 +5,59 @@ import {
   updateUser,
   getUserByIdOrEmail,
 } from "../services/authService";
+import { setupChatInterceptor } from '../services/chatService';
+import { initializeSocket, disconnectSocket } from '../services/socketService';
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [token, setToken] = useState(null);
 
   useEffect(() => {
-    const loadUser = async () => {
-      const storedUser = await AsyncStorage.getItem("user");
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
+    const loadUserAndToken = async () => {
+      try {
+        const [storedUser, storedToken] = await Promise.all([
+          AsyncStorage.getItem("user"),
+          AsyncStorage.getItem("accessToken")
+        ]);
+        
+        if (storedUser) {
+          setUser(JSON.parse(storedUser));
+        }
+        if (storedToken) {
+          setToken(storedToken);
+          setupChatInterceptor(storedToken);
+        }
+      } catch (error) {
+        console.error("Error loading user data:", error);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
-    loadUser();
+    loadUserAndToken();
   }, []);
 
-  const login = async (email, password) => {
+  const login = async (userData) => {
     try {
-      const response = await loginUser({ email, password });
-      await AsyncStorage.setItem("accessToken", response.data.accessToken);
-      await AsyncStorage.setItem("user", JSON.stringify(response.data.user));
-      setUser(response.data.user);
+      const { user, accessToken } = userData;
+      await AsyncStorage.multiSet([
+        ["accessToken", accessToken],
+        ["user", JSON.stringify(user)]
+      ]);
+      setUser(user);
+      setToken(accessToken);
+      setupChatInterceptor(accessToken);
+      await initializeSocket(); // Initialize socket after login
     } catch (error) {
-      console.error("Lỗi đăng nhập:", error);
-      throw error; // Ném lỗi để xử lý ở tầng trên
+      console.error("Login error:", error);
+      throw error;
     }
   };
 
   const logout = async () => {
+    disconnectSocket(); // Disconnect socket on logout
     await AsyncStorage.removeItem("accessToken");
     await AsyncStorage.removeItem("user");
     setUser(null);
@@ -83,6 +105,7 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider
       value={{
         user,
+        token,
         login,
         logout,
         updateUserProfile,
