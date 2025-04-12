@@ -5,13 +5,15 @@ import CreateAccount from "./src/screens/login/CreateAccount";
 import OTP from "./src/screens/login/OTP";
 import Login from "./src/screens/login/Login";
 import MyTabs from "./src/navigator/MyTabs";
+import ChatDetail from "./src/screens/chat/ChatDetail";
+import ForgotPasswordScreen from "./src/screens/login/ForgetPassword";
+import OTPForForgetPassword from "./src/screens/login/OTPForForgetPassword";
+import ResetPassword from "./src/screens/login/ResetPassword";
+import ProfileScreen from "./src/screens/pages/ProfileScreen";
+import EditProfile from "./src/screens/pages/EditProfile";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { AuthProvider } from "./src/contexts/AuthContext";
-
-import CreateAccount2 from "./src/screens/pages/CreateAccount2";
-import OTPVerification from "./src/screens/pages/OTPVerification";
-import Home from "./src/screens/bottomtab/Home";
 const Stack = createNativeStackNavigator();
 import Contacts from "./src/screens/bottomtab/Contacts";
 import Activity from "./src/screens/bottomtab/Activity";
@@ -32,7 +34,6 @@ export default function App() {
             component={CreateAccount}
             options={{ headerShown: false }}
           />
-
           <Stack.Screen
             name="OTP"
             component={OTP}
@@ -48,6 +49,28 @@ export default function App() {
             component={MyTabs}
             options={{ headerShown: false }}
           />
+          <Stack.Screen
+            name="ChatDetail"
+            component={ChatDetail}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ForgotPasswordScreen"
+            component={ForgotPasswordScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="OTPForForgetPassword"
+            component={OTPForForgetPassword}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ResetPassword"
+            component={ResetPassword}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen name="Profile" component={ProfileScreen} />
+          <Stack.Screen name="EditProfile" component={EditProfile} />
         </Stack.Navigator>
       </NavigationContainer>
     </AuthProvider>

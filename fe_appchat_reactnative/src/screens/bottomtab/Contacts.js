@@ -145,19 +145,19 @@ const styles = StyleSheet.create({
     color: "#8E8E93",
   },
   contactList: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 15,
   },
   contactItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 15,
     borderBottomWidth: 1,
     borderBottomColor: "#E0E0E0",
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 45,
+    height: 45,
+    borderRadius: 10,
     marginRight: 10,
   },
   avatarPlaceholder: {
