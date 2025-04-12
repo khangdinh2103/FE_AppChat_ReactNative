@@ -10,6 +10,8 @@ import ForgotPasswordScreen from "./src/screens/login/ForgetPassword";
 import OTPForForgetPassword from "./src/screens/login/OTPForForgetPassword";
 import ResetPassword from "./src/screens/login/ResetPassword";
 import AddFriend from "./src/screens/contacts/AddFriend";
+import ProfileScreen from "./src/screens/pages/ProfileScreen";
+import EditProfile from "./src/screens/pages/EditProfile";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { AuthProvider } from "./src/contexts/AuthContext";
@@ -30,7 +32,6 @@ export default function App() {
             component={CreateAccount}
             options={{ headerShown: false }}
           />
-
           <Stack.Screen
             name="OTP"
             component={OTP}
@@ -73,6 +74,8 @@ export default function App() {
             options={{ headerShown: false }}
           />
           
+          <Stack.Screen name="Profile" component={ProfileScreen} />
+          <Stack.Screen name="EditProfile" component={EditProfile} />
         </Stack.Navigator>
       </NavigationContainer>
     </AuthProvider>

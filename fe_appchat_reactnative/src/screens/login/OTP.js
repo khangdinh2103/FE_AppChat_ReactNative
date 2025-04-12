@@ -9,14 +9,14 @@ import {
   Alert,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { verifyOTP, resendOTP } from "../../services/authService";  // Import the verifyOTP function
+import { verifyOTP, resendOTP } from "../../services/authService"; // Import the verifyOTP function
 
 export default function OTP(props) {
   const [otp, setOtp] = useState(["", "", "", "", "", ""]); // 6 OTP digits
   const inputRefs = useRef([]);
   const [timer, setTimer] = useState(25);
   const [isResendDisabled, setIsResendDisabled] = useState(true);
-  const email = props.route.params?.email;  // Get the email from the previous screen's params
+  const email = props.route.params?.email; // Get the email from the previous screen's params
 
   useEffect(() => {
     if (timer > 0) {
@@ -44,12 +44,11 @@ export default function OTP(props) {
 
   const handleResend = async () => {
     if (isResendDisabled) return;
-  
+
     try {
       // Prepare the data for the resend OTP request
       const data = { email: props.route.params?.email }; // Assuming the email is passed as a route parameter
       await resendOTP(data); // Call the resend OTP API
-  
       // Show confirmation and reset the timer
       Alert.alert("Gửi lại mã", "Mã OTP mới đã được gửi.");
       setTimer(25); // Reset the countdown timer to 25 seconds
@@ -71,7 +70,7 @@ export default function OTP(props) {
         if (response.status === 200) {
           Alert.alert("Thành công", "Mã OTP hợp lệ, đăng nhập thành công!");
           // Navigate to the next screen after successful OTP verification
-          props.navigation.navigate("MyTabs");  // Update the target screen as needed
+          props.navigation.navigate("MyTabs"); // Update the target screen as needed
         }
       } catch (error) {
         Alert.alert("Lỗi", "Mã OTP không hợp lệ, vui lòng thử lại.");
@@ -121,7 +120,9 @@ export default function OTP(props) {
         disabled={isResendDisabled}
       >
         <Text style={styles.resendText}>Gửi lại mã</Text>
-        <Text style={[styles.timerText, isResendDisabled && { color: "#ADB5BD" }]}>
+        <Text
+          style={[styles.timerText, isResendDisabled && { color: "#ADB5BD" }]}
+        >
           {isResendDisabled ? `00:${timer < 10 ? `0${timer}` : timer}` : ""}
         </Text>
       </TouchableOpacity>

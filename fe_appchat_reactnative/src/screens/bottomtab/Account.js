@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useContext } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 import Ionicons from "react-native-vector-icons/Ionicons";
 import MainLayout from "../../components/MainLayout";
 import { useNavigation } from "@react-navigation/native";
+import { AuthContext } from "../../contexts/AuthContext"; // Import AuthContext
 
 const settings = [
   {
@@ -46,6 +47,7 @@ const settings = [
 ];
 
 const Account = () => {
+  const { user } = useContext(AuthContext); // Lấy thông tin người dùng từ AuthContext
   const navigation = useNavigation();
 
   const renderItem = ({ item }) => (
@@ -64,6 +66,19 @@ const Account = () => {
       </View>
     </TouchableOpacity>
   );
+
+  // Kiểm tra nếu không có user (chưa đăng nhập)
+  if (!user) {
+    return (
+      <MainLayout>
+        <View style={styles.container}>
+          <Text style={styles.errorText}>
+            Bạn cần đăng nhập để xem thông tin tài khoản.
+          </Text>
+        </View>
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout>
@@ -87,11 +102,15 @@ const Account = () => {
           onPress={() => navigation.navigate("ProfileScreen")}
         >
           <Image
-            source={{ uri: "https://randomuser.me/api/portraits/men/1.jpg" }}
+            source={{
+              uri:
+                user.primary_avatar ||
+                "https://randomuser.me/api/portraits/men/1.jpg", // Sử dụng avatar từ user, nếu không có thì dùng mặc định
+            }}
             style={styles.avatar}
           />
           <View>
-            <Text style={styles.profileName}>Khang Đinh</Text>
+            <Text style={styles.profileName}>{user.name || "Người dùng"}</Text>
             <Text style={styles.profileDescription}>Xem trang cá nhân</Text>
           </View>
         </TouchableOpacity>
@@ -113,6 +132,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F8F8F8",
     marginTop: 40,
+  },
+  errorText: {
+    fontSize: 16,
+    color: "red",
+    textAlign: "center",
+    marginTop: 20,
   },
   searchBar: {
     flexDirection: "row",
