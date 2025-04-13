@@ -1,7 +1,7 @@
 import io from 'socket.io-client';
 // import { API_URL } from '@env';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-const API_URL = "http://192.168.2.213:5000";
+const API_URL = "https://1814-2a09-bac5-d46c-25d7-00-3c5-3e.ngrok-free.app";
 let socket;
 
 export const initializeSocket = async () => {
