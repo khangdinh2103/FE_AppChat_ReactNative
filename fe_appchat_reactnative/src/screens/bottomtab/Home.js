@@ -1,4 +1,5 @@
 import React, {useRef, useState, useEffect, useContext } from "react";
+import { useRoute, useNavigation } from "@react-navigation/native";
 import {
   View,
   Text,
@@ -10,7 +11,6 @@ import {
   ActivityIndicator,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation } from "@react-navigation/native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import MainLayout from "../../components/MainLayout";
 import { AuthContext } from "../../contexts/AuthContext";
@@ -23,6 +23,9 @@ const Home = () => {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigation = useNavigation();
+  const { searchUsersByQuery, searchResults } = useContext(AuthContext);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [displayData, setDisplayData] = useState([]);
   const { user } = useContext(AuthContext);
   const socketRef = useRef(null);
 
@@ -62,6 +65,32 @@ const Home = () => {
       fetchConversations();
     }, [])
   );
+
+
+  const handleSearch = async (text) => {
+    setSearchQuery(text);
+    if (text.trim() === '') {
+      setDisplayData([]);
+      return;
+    }
+
+    try {
+      await searchUsersByQuery(text);
+      const formattedResults = searchResults.map(user => ({
+        id: user._id,
+        name: user.name,
+        message: user.phone || '', 
+        time: "Now",
+        unread: 0,
+        avatar: user.primary_avatar || '',
+      }));
+      setDisplayData(formattedResults);
+    } catch (error) {
+      console.error('Search error:', error);
+    }
+  };
+  
+  
   
   const getReadMessageMap = async () => {
     const stored = await AsyncStorage.getItem("readMessages");
@@ -188,6 +217,8 @@ const Home = () => {
             placeholder="Tìm kiếm"
             placeholderTextColor="#fff"
             style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={handleSearch}
           />
           <Ionicons name="qr-code-outline" size={20} color="#fff" />
           <TouchableOpacity onPress={() => navigation.navigate("AddFriend")}>
