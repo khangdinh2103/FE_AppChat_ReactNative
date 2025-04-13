@@ -83,6 +83,7 @@ const Home = () => {
         time: "Now",
         unread: 0,
         avatar: user.primary_avatar || '',
+        isSearchResult: true // Add flag to identify search results
       }));
       setDisplayData(formattedResults);
     } catch (error) {
@@ -148,6 +149,41 @@ const Home = () => {
   
 
   const renderItem = ({ item }) => {
+    // Handle search result items differently
+    if (item.isSearchResult) {
+      return (
+        <TouchableOpacity
+          style={styles.chatItem}
+          onPress={() => navigation.navigate("AddFriendConfirmation", { userData: {
+            id: item.id,
+            name: item.name,
+            phone: item.message,
+            avatar: item.avatar
+          }})}
+        >
+          {item.avatar ? (
+            <Image
+              source={{ uri: item.avatar }}
+              style={styles.avatar}
+            />
+          ) : (
+            <View style={[styles.avatar, styles.avatarPlaceholder]}>
+              <Text style={styles.avatarText}>
+                {item.name.charAt(0)}
+              </Text>
+            </View>
+          )}
+          <View style={styles.chatContent}>
+            <Text style={styles.chatName}>{item.name}</Text>
+            <Text style={styles.chatMessage}>
+              {item.message || "Người dùng mới"}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      );
+    }
+
+    // Original conversation rendering
     const otherParticipant = item.participants.find(
       (p) => p.user_id !== user._id
     );
@@ -242,8 +278,8 @@ const Home = () => {
         </View>
 
         <FlatList
-          data={conversations}
-          keyExtractor={(item) => item._id}
+          data={searchQuery.trim() !== '' ? displayData : conversations}
+          keyExtractor={(item) => item.id || item._id}
           renderItem={renderItem}
           style={styles.chatList}
           refreshing={loading}
