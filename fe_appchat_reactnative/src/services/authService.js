@@ -140,3 +140,32 @@ export const updateUserAvatar = async (userId, imageUrl) => {
     );
   }
 };
+
+export const searchUsers = async (query) => {
+  try {
+    const token = await AsyncStorage.getItem("accessToken");
+
+    if (!token) {
+      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
+    }
+
+    const response = await axios.get(`${USER_API_URL}/searchByNameOrPhone`, {
+      params: { query },
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (response.data.status === "success") {
+      return response.data.data;
+    } else {
+      throw new Error(response.data.message || "Tìm kiếm người dùng thất bại");
+    }
+  } catch (error) {
+    console.error(
+      "❌ Lỗi khi tìm kiếm người dùng:",
+      error.response?.data || error.message
+    );
+    throw error.response?.data || { message: error.message || "Lỗi không xác định" };
+  }
+};

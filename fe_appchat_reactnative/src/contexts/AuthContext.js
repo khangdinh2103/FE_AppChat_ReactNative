@@ -4,6 +4,7 @@ import {
   loginUser,
   updateUser,
   getUserByIdOrEmail,
+  searchUsers,
 } from "../services/authService";
 import { setupChatInterceptor } from '../services/chatService';
 import { initializeSocket, disconnectSocket } from '../services/socketService';
@@ -14,6 +15,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [token, setToken] = useState(null);
+  const [searchResults, setSearchResults] = useState([]);
 
   useEffect(() => {
     const loadUserAndToken = async () => {
@@ -101,6 +103,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const searchUsersByQuery = async (query) => {
+    try {
+      const results = await searchUsers(query);
+      setSearchResults(results);
+      return results;
+    } catch (error) {
+      console.error("Lỗi tìm kiếm người dùng:", error);
+      throw error;
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -111,6 +124,8 @@ export const AuthProvider = ({ children }) => {
         updateUserProfile,
         fetchUserByIdOrEmail,
         isLoading,
+        searchUsersByQuery, // Add this function
+        searchResults,
       }}
     >
       {children}
