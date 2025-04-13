@@ -100,21 +100,8 @@ const Home = () => {
 
  
 
-  // const fetchConversations = async () => {
-  //   try {
-  //     setLoading(true);
-  //     const response = await getConversations();
-  //     // console.log("Conversations response:", response);
-  //     if (response.status === "success") {
-  //       setConversations(response.data);
-  //     }
-  //   } catch (error) {
-  //     console.error("Error fetching conversations:", error);
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-  const fetchConversations = async () => {
+  // First, let's fix the fetchConversations dependency issue by using useCallback
+  const fetchConversations = useCallback(async () => {
     try {
       setLoading(true);
       const response = await getConversations();
@@ -145,9 +132,40 @@ const Home = () => {
     } finally {
       setLoading(false);
     }
-  };
-  
+  }, []);
 
+  // Now improve the socket connection setup
+  useEffect(() => {
+    const setupSocket = async () => {
+      const socketInstance = await initializeSocket();
+      socketRef.current = socketInstance;
+  
+      if (socketInstance) {
+        // Remove any existing listeners to prevent duplicates
+        socketInstance.off("receiveMessage");
+        
+        // Add the new listener
+        socketInstance.on("receiveMessage", (data) => {
+          console.log("New message received in Home screen:", data);
+          // Immediately fetch conversations to update the list
+          fetchConversations();
+        });
+      }
+    };
+  
+    setupSocket();
+  
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.off("receiveMessage");
+      }
+    };
+  }, [fetchConversations]);
+  
+  // Keep your initial fetch
+  useEffect(() => {
+    fetchConversations();
+  }, [fetchConversations]);
   const renderItem = ({ item }) => {
     // Handle search result items differently
     if (item.isSearchResult) {
