@@ -170,6 +170,7 @@ const AddFriend = ({ navigation, route }) => {
       <View style={styles.inputSection}>
         <View style={[styles.inputContainer, error && styles.inputError]}>
           <Ionicons name="search-outline" size={20} color="#666" />
+          {/* Update the TextInput onChangeText handler to trigger search as user types */}
           <TextInput
             style={styles.input}
             placeholder="Nhập email hoặc số điện thoại"
@@ -177,6 +178,13 @@ const AddFriend = ({ navigation, route }) => {
             onChangeText={(text) => {
               setSearchValue(text);
               setError("");
+              if (text.trim().length > 0) {
+                // Auto-search after user types
+                handleSearch(text);
+              } else {
+                // Clear search results when input is empty
+                setSearchData([]);
+              }
             }}
             autoCapitalize="none"
           />
