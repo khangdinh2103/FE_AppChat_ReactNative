@@ -11,7 +11,7 @@ import {
   Alert,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import CountryPicker from "react-native-country-picker-modal";
+// import CountryPicker from "react-native-country-picker-modal";
 import { useNavigation } from "@react-navigation/native";
 import { AuthContext } from "../../contexts/AuthContext"; // Thêm context
 import AsyncStorage from "@react-native-async-storage/async-storage";
