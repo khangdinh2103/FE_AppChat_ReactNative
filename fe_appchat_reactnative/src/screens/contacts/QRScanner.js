@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Text, View, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
-import { BarCodeScanner } from 'expo-barcode-scanner';
+import { Camera } from 'expo-camera'; // Corrected import for Camera
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 const QRScanner = ({ navigation }) => {
@@ -8,20 +8,44 @@ const QRScanner = ({ navigation }) => {
   const [scanned, setScanned] = useState(false);
 
   useEffect(() => {
-    const getBarCodeScannerPermissions = async () => {
-      const { status } = await BarCodeScanner.requestPermissionsAsync();
+    const getPermissions = async () => {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      console.log('Camera permission status:', status); // Log permission status
       setHasPermission(status === 'granted');
     };
-
-    getBarCodeScannerPermissions();
+    getPermissions();
   }, []);
 
-  const handleBarCodeScanned = ({ type, data }) => {
+  const handleBarcodeScanned = useCallback(({ data }) => {
     setScanned(true);
     try {
       const userData = JSON.parse(data);
+      console.log("Scanned QR data:", userData); // Add this log to see what's in the QR code
+      
       if (userData.userId && userData.name) {
-        navigation.replace('AddFriendConfirmation', { userData });
+        if (userData.phone) {
+          // When navigating to AddFriend, include all user data
+          navigation.navigate('AddFriend', {
+            searchQuery: userData.phone,
+            autoSearch: true,
+            userData: {
+              id: userData.userId,
+              name: userData.name,
+              phone: userData.phone,
+              avatar: userData.avatar // Make sure to include avatar
+            }
+          });
+        } else {
+          // When navigating directly to confirmation, include all data
+          navigation.replace('AddFriendConfirmation', { 
+            userData: {
+              id: userData.userId,
+              name: userData.name,
+              phone: userData.phone || '',
+              avatar: userData.avatar // Make sure to include avatar
+            } 
+          });
+        }
       } else {
         alert('Mã QR không hợp lệ');
       }
@@ -29,7 +53,7 @@ const QRScanner = ({ navigation }) => {
       console.error('Invalid QR Code:', error);
       alert('Mã QR không hợp lệ');
     }
-  };
+  }, [navigation]);
 
   if (hasPermission === null) {
     return (
@@ -43,9 +67,13 @@ const QRScanner = ({ navigation }) => {
     return (
       <View style={styles.container}>
         <Text style={styles.text}>Không có quyền truy cập camera</Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.button}
-          onPress={() => getBarCodeScannerPermissions()}
+          onPress={async () => {
+            const { status } = await Camera.requestCameraPermissionsAsync();
+            console.log('Camera permission status after retry:', status); // Log permission status after retry
+            setHasPermission(status === 'granted');
+          }}
         >
           <Text style={styles.buttonText}>Cấp quyền</Text>
         </TouchableOpacity>
@@ -63,20 +91,19 @@ const QRScanner = ({ navigation }) => {
       </View>
 
       <View style={styles.scannerContainer}>
-        <BarCodeScanner
-          onBarCodeScanned={scanned ? undefined : handleBarCodeScanned}
+        <Camera
+          onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
+          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
           style={StyleSheet.absoluteFillObject}
         />
         <View style={styles.overlay}>
           <View style={styles.scanFrame} />
-          <Text style={styles.instructions}>
-            Đặt mã QR vào khung hình để quét
-          </Text>
+          <Text style={styles.instructions}>Đặt mã QR vào khung hình để quét</Text>
         </View>
       </View>
 
       {scanned && (
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.rescanButton}
           onPress={() => setScanned(false)}
         >
@@ -88,25 +115,15 @@ const QRScanner = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-  },
+  container: { flex: 1, backgroundColor: '#000' },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 16 },
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#fff',
     marginLeft: 16,
   },
-  scannerContainer: {
-    flex: 1,
-    position: 'relative',
-  },
+  scannerContainer: { flex: 1, position: 'relative' },
   overlay: {
     flex: 1,
     justifyContent: 'center',

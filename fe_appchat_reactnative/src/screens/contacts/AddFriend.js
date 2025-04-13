@@ -1,79 +1,125 @@
 import React, { useContext, useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  Modal,
-} from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AuthContext } from '../../contexts/AuthContext';
-import QRCode from 'react-native-qrcode-svg';
-
-// import { BarCodeScanner } from 'expo-barcode-scanner';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, SafeAreaView, Modal, Image } from "react-native";
+import Ionicons from "react-native-vector-icons/Ionicons";
+import { AuthContext } from "../../contexts/AuthContext";
+import QRCode from "react-native-qrcode-svg";
+// import { Camera } from "expo-camera";
+import { CameraView, useCameraPermissions } from 'expo-camera';
 
 
-const AddFriend = ({ navigation }) => {
+const AddFriend = ({ navigation, route }) => {
   const { user, searchUsersByQuery, searchResults } = useContext(AuthContext);
-  const [searchValue, setSearchValue] = useState('');
-  const [error, setError] = useState('');
+  const [searchValue, setSearchValue] = useState("");
+  const [error, setError] = useState("");
   const [showQR, setShowQR] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [hasPermission, setHasPermission] = useState(null);
   const [scanned, setScanned] = useState(false);
   const [searchData, setSearchData] = useState([]);
+  const [permission, requestPermission] = useCameraPermissions();
 
+  // Request Camera permission on component mount
   useEffect(() => {
-    const getBarCodeScannerPermissions = async () => {
-      const { status } = await BarCodeScanner.requestPermissionsAsync();
-      setHasPermission(status === 'granted');
+    const getCameraPermissions = async () => {
+      try {
+        const { granted } = await requestPermission();
+        setHasPermission(granted);
+      } catch (error) {
+        console.error("Error requesting camera permissions:", error);
+        setHasPermission(false);
+      }
     };
-
-    getBarCodeScannerPermissions();
+  
+    getCameraPermissions();
   }, []);
+  
+  
+  
 
   const handleBarCodeScanned = ({ type, data }) => {
     setScanned(true);
     setShowScanner(false);
     try {
       const userData = JSON.parse(data);
+      console.log("Scanned QR data in AddFriend:", userData); // Add this log
+      
       if (userData.userId && userData.name) {
-        // Navigate to confirmation screen or handle friend request
-        navigation.navigate('AddFriendConfirmation', { userData });
+        navigation.navigate("AddFriendConfirmation", { 
+          userData: {
+            id: userData.userId,
+            name: userData.name,
+            phone: userData.phone || "",
+            avatar: userData.avatar // Make sure to include avatar
+          } 
+        });
       } else {
-        alert('Mã QR không hợp lệ');
+        alert("Mã QR không hợp lệ");
       }
     } catch (error) {
-      console.error('Invalid QR Code:', error);
-      alert('Mã QR không hợp lệ');
+      console.error("Invalid QR Code:", error);
+      alert("Mã QR không hợp lệ");
     }
   };
   
+
   const handleShowMyQR = () => {
     setShowQR(true);
   };
 
-  const handleSearch = async () => {
-    if (!searchValue.trim()) {
-      setError('Vui lòng nhập tên hoặc email');
+  // Add effect to handle search query from QR scanner
+  // Update the useEffect that handles route params
+  useEffect(() => {
+    if (route.params?.searchQuery) {
+      setSearchValue(route.params.searchQuery);
+  
+      // Auto search if requested
+      if (route.params.autoSearch) {
+        handleSearch(route.params.searchQuery);
+      }
+      
+      // If we have userData from QR scan, navigate directly to confirmation
+      if (route.params.userData) {
+        navigation.navigate("AddFriendConfirmation", { 
+          userData: route.params.userData 
+        });
+      }
+  
+      // Clear the params to prevent repeated searches
+      navigation.setParams({ 
+        searchQuery: undefined, 
+        autoSearch: undefined,
+        userData: undefined 
+      });
+    }
+  }, [route.params]);
+
+  // Update handleSearch to accept an optional parameter
+  const handleSearch = async (queryOverride) => {
+    const query = queryOverride || searchValue;
+
+    if (!query.trim()) {
+      setError("Vui lòng nhập tên hoặc email");
       return;
     }
 
     try {
-      const results = await searchUsersByQuery(searchValue);
-      setSearchData(results.map(user => ({
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone || '',
-        avatar: user.avatar || '',
-      })));
-      setError('');
+      const results = await searchUsersByQuery(query);
+      setSearchData(
+        results.map((user) => ({
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone || "",
+          avatar: user.primary_avatar || "",
+        }))
+      );
+      setError("");
+      console.log("Search results:", results);
+
     } catch (error) {
-      console.error('Search error:', error);
-      setError('Có lỗi xảy ra khi tìm kiếm');
+      console.error("Search error:", error);
+      
+      setError("Có lỗi xảy ra khi tìm kiếm");
     }
   };
 
@@ -85,10 +131,11 @@ const AddFriend = ({ navigation }) => {
     return (
       <View style={styles.searchResults}>
         {searchData.map((item) => (
+          
           <TouchableOpacity
             key={item.id}
             style={styles.resultItem}
-            onPress={() => navigation.navigate('AddFriendConfirmation', { userData: item })}
+            onPress={() => navigation.navigate("AddFriendConfirmation", { userData: item })}
           >
             {item.avatar ? (
               <Image source={{ uri: item.avatar }} style={styles.resultAvatar} />
@@ -106,7 +153,6 @@ const AddFriend = ({ navigation }) => {
       </View>
     );
   };
-    
 
   return (
     <SafeAreaView style={styles.container}>
@@ -118,9 +164,7 @@ const AddFriend = ({ navigation }) => {
         <Text style={styles.headerTitle}>Thêm bạn</Text>
       </View>
 
-      <Text style={styles.description}>
-        Nhập email hoặc số điện thoại để tìm bạn bè
-      </Text>
+      <Text style={styles.description}>Nhập email hoặc số điện thoại để tìm bạn bè</Text>
 
       {/* Input Section */}
       <View style={styles.inputSection}>
@@ -132,7 +176,7 @@ const AddFriend = ({ navigation }) => {
             value={searchValue}
             onChangeText={(text) => {
               setSearchValue(text);
-              setError('');
+              setError("");
             }}
             autoCapitalize="none"
           />
@@ -144,77 +188,69 @@ const AddFriend = ({ navigation }) => {
       </View>
       {renderSearchResults()}
 
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={showQR}
-        onRequestClose={() => setShowQR(false)}
-      >
+      {/* QR Code Modal */}
+      <Modal animationType="slide" transparent={true} visible={showQR} onRequestClose={() => setShowQR(false)}>
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setShowQR(false)}
-            >
+            <TouchableOpacity style={styles.closeButton} onPress={() => setShowQR(false)}>
               <Ionicons name="close" size={24} color="#000" />
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Mã QR của bạn</Text>
             <View style={styles.qrContainer}>
+              // In the QR Code Modal section, update the QR code value to include avatar
               <QRCode
                 value={JSON.stringify({
                   userId: user?._id,
                   name: user?.name,
-                  email: user?.email
+                  phone: user?.phone,
+                  avatar: user?.primary_avatar // Make sure this property name matches what you use elsewhere
                 })}
                 size={200}
               />
             </View>
-            <Text style={styles.qrDescription}>
-              Đưa mã này cho bạn bè quét để kết bạn với bạn
-            </Text>
+            <Text style={styles.qrDescription}>Đưa mã này cho bạn bè quét để kết bạn với bạn</Text>
           </View>
         </View>
       </Modal>
-      <Modal
-        animationType="slide"
-        transparent={false}
-        visible={showScanner}
-        onRequestClose={() => setShowScanner(false)}
-      >
+
+      {/* QR Scanner Modal */}
+      <Modal animationType="slide" transparent={false} visible={showScanner} onRequestClose={() => setShowScanner(false)}>
         <SafeAreaView style={styles.scannerContainer}>
           <View style={styles.scannerHeader}>
-          <TouchableOpacity 
-  style={styles.option}
-  onPress={() => {
-    setScanned(false);
-    setShowScanner(true);
-  }}
->
-  <Ionicons name="scan-outline" size={24} color="#1a75ff" />
-  <Text style={styles.optionText}>Quét mã QR</Text>
-</TouchableOpacity>
+            <TouchableOpacity
+              style={styles.option}
+              onPress={() => {
+                setScanned(false);
+                setShowScanner(true);
+              }}
+            >
+              <Ionicons name="scan-outline" size={24} color="#1a75ff" />
+              <Text style={styles.optionText}>Quét mã QR</Text>
+            </TouchableOpacity>
           </View>
 
           {hasPermission === null ? (
             <Text style={styles.permissionText}>Đang yêu cầu quyền truy cập camera...</Text>
           ) : hasPermission === false ? (
-            <Text style={styles.permissionText}>Không có quyền truy cập camera</Text>
+            <Text style={styles.permissionText}>Không có quyền truy cập camera. Vui lòng cấp quyền trong cài đặt.</Text>
           ) : (
+            // Hiển thị giao diện camera khi quyền được cấp
             <View style={styles.scanner}>
-              <BarCodeScanner
-                onBarCodeScanned={scanned ? undefined : handleBarCodeScanned}
+              <CameraView
                 style={StyleSheet.absoluteFillObject}
+                facing="back"
+                barcodeScannerSettings={{
+                  barcodeTypes: ['qr'],
+                }}
+                onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
               />
-              <View style={styles.scannerOverlay}>
-                <View style={styles.scannerFrame} />
-                <Text style={styles.scannerText}>
-                  Đặt mã QR vào khung hình để quét
-                </Text>
-              </View>
+
             </View>
           )}
+
         </SafeAreaView>
       </Modal>
+
       {/* Options List */}
       <View style={styles.optionsList}>
         <TouchableOpacity style={styles.option}>
@@ -227,10 +263,7 @@ const AddFriend = ({ navigation }) => {
           <Text style={styles.optionText}>Mã QR của tôi</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={styles.option}
-          onPress={() => navigation.navigate('QRScanner')}
-        >
+        <TouchableOpacity style={styles.option} onPress={() => setShowScanner(true)}>
           <Ionicons name="scan-outline" size={24} color="#1a75ff" />
           <Text style={styles.optionText}>Quét mã QR</Text>
         </TouchableOpacity>
