@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useContext } from "react";
+import React, {useRef, useState, useEffect, useContext } from "react";
 import {
   View,
   Text,
@@ -9,17 +9,19 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import MainLayout from "../../components/MainLayout";
 import { AuthContext } from "../../contexts/AuthContext";
 import { getConversations } from "../../services/chatService";
-import { initializeSocket } from "../../services/socketService";
+import { initializeSocket, emitMessage, subscribeToMessages } from "../../services/socketService";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback } from "react";
 
 const Home = () => {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [unreadMessages, setUnreadMessages] = useState({});
   const navigation = useNavigation();
   const { user } = useContext(AuthContext);
   const socketRef = useRef(null);
@@ -28,65 +30,85 @@ const Home = () => {
     const setupSocket = async () => {
       const socketInstance = await initializeSocket();
       socketRef.current = socketInstance;
-
+  
       if (socketInstance) {
-        socketInstance.on("receiveMessage", (newMessage) => {
-          console.log("New message received in Home screen:", newMessage);
-
-          if (newMessage.conversation_id) {
-            setUnreadMessages((prev) => ({
-              ...prev,
-              [newMessage.conversation_id]: true,
-            }));
-
-            setConversations((prevConversations) => {
-              const updatedConversations = [...prevConversations];
-              const index = updatedConversations.findIndex(
-                console.log("hi", conv),
-                (conv) => conv._id === newMessage.conversation_id
-              );
-
-              if (index !== -1) {
-                const updatedConversation = {
-                  ...updatedConversations[index],
-                  last_message: {
-                    content: newMessage.content,
-                    timestamp: new Date(),
-                  },
-                };
-
-                updatedConversations.splice(index, 1);
-                updatedConversations.unshift(updatedConversation);
-              }
-
-              return updatedConversations;
-            });
-          } else {
-            fetchConversations();
-          }
+        socketInstance.on("receiveMessage", () => {
+          console.log("New message received in Home screen");
+          fetchConversations(); // Đảm bảo đây là callback mới
         });
       }
     };
-
+  
     setupSocket();
-
+  
     return () => {
       if (socketRef.current) {
         socketRef.current.off("receiveMessage");
       }
     };
-  }, []);
-
+  }, [fetchConversations]); // <== Add dependency
+  
   useEffect(() => {
     fetchConversations();
   }, []);
+  const markConversationAsRead = async (conversationId, messageId) => {
+    const stored = await AsyncStorage.getItem("readMessages");
+    const parsed = stored ? JSON.parse(stored) : {};
+    parsed[conversationId] = messageId;
+    await AsyncStorage.setItem("readMessages", JSON.stringify(parsed));
+  };
+  useFocusEffect(
+    useCallback(() => {
+      fetchConversations();
+    }, [])
+  );
+  
+  const getReadMessageMap = async () => {
+    const stored = await AsyncStorage.getItem("readMessages");
+    return stored ? JSON.parse(stored) : {};
+  };
 
+ 
+
+  // const fetchConversations = async () => {
+  //   try {
+  //     setLoading(true);
+  //     const response = await getConversations();
+  //     // console.log("Conversations response:", response);
+  //     if (response.status === "success") {
+  //       setConversations(response.data);
+  //     }
+  //   } catch (error) {
+  //     console.error("Error fetching conversations:", error);
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
   const fetchConversations = async () => {
     try {
       setLoading(true);
       const response = await getConversations();
       if (response.status === "success") {
-        setConversations(response.data);
+        const readMap = await getReadMessageMap();
+        const updatedList = response.data.map((item) => {
+          const lastMsgId = item.last_message?._id;
+          const readMsgId = readMap[item._id];
+  
+          const isUnread = lastMsgId && lastMsgId !== readMsgId;
+          return {
+            ...item,
+            isUnread,
+          };
+        });
+  
+        // Sắp xếp: chưa đọc lên đầu, rồi theo updated_at
+        const sorted = updatedList.sort((a, b) => {
+          if (a.isUnread && !b.isUnread) return -1;
+          if (!a.isUnread && b.isUnread) return 1;
+          return new Date(b.updated_at) - new Date(a.updated_at);
+        });
+  
+        setConversations(sorted);
       }
     } catch (error) {
       console.error("Error fetching conversations:", error);
@@ -94,34 +116,30 @@ const Home = () => {
       setLoading(false);
     }
   };
+  
 
   const renderItem = ({ item }) => {
     const otherParticipant = item.participants.find(
       (p) => p.user_id !== user._id
     );
 
-    const isUnread = unreadMessages[item._id];
-
     return (
       <TouchableOpacity
         style={styles.chatItem}
-        onPress={() => {
-          if (isUnread) {
-            setUnreadMessages((prev) => ({
-              ...prev,
-              [item._id]: false,
-            }));
-          }
-
+        // In renderItem function
+        onPress={async () => {
+          await markConversationAsRead(item._id, item.last_message?._id);
           navigation.navigate("ChatDetail", {
             conversationId: item._id,
             name: otherParticipant.name,
             avatar: otherParticipant.primary_avatar,
-            receiverId: otherParticipant.user_id,
+            receiverId: otherParticipant.user_id
           });
         }}
+        
       >
         {otherParticipant.primary_avatar ? (
+          // console.log("Avatar URL:", otherParticipant.primary_avatar),
           <Image
             source={{ uri: otherParticipant.primary_avatar }}
             style={styles.avatar}
@@ -134,16 +152,19 @@ const Home = () => {
           </View>
         )}
         <View style={styles.chatContent}>
-          <Text style={[styles.chatName, isUnread && styles.unreadText]}>
-            {otherParticipant.name}
-          </Text>
-          <Text style={[styles.chatMessage, isUnread && styles.unreadText]}>
+          <Text style={styles.chatName}>{otherParticipant.name}</Text>
+          <Text
+            style={[
+              styles.chatMessage,
+              item.isUnread ? { fontWeight: "bold", color: "#000" } : {},
+            ]}
+          >
             {item.last_message
               ? item.last_message.content
               : "Bắt đầu cuộc trò chuyện"}
           </Text>
+
         </View>
-        {isUnread && <View style={styles.unreadDot} />}
       </TouchableOpacity>
     );
   };
@@ -267,17 +288,6 @@ const styles = StyleSheet.create({
   },
   chatMessage: {
     color: "#8E8E93",
-  },
-  unreadText: {
-    fontWeight: "900",
-    color: "#000",
-  },
-  unreadDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#4E7DFF",
-    marginLeft: 10,
   },
   loadingContainer: {
     justifyContent: "center",
