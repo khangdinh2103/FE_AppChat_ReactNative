@@ -23,7 +23,7 @@ const AddFriendConfirmation = ({ navigation, route }) => {
       console.error('Error adding friend:', error);
     }
   };
-
+  console.log("hi", userData);
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -36,10 +36,20 @@ const AddFriendConfirmation = ({ navigation, route }) => {
       <View style={styles.content}>
         <View style={styles.userInfo}>
           <View style={styles.avatarContainer}>
-            <Text style={styles.avatarText}>{userData.name?.charAt(0)}</Text>
+          {userData.avatar ? (
+            <Image source={{ uri: userData.avatar }} style={{ width: 100, height: 100, borderRadius: 50 }} />
+          ) : (
+            <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: '#ccc', justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ fontSize: 36 }}>{userData.name.charAt(0)}</Text>
+            </View>
+          )}
+
           </View>
           <Text style={styles.userName}>{userData.name}</Text>
-          <Text style={styles.userEmail}>{userData.email}</Text>
+          {/* Display phone instead of email if available */}
+          <Text style={styles.userEmail}>
+            {userData.phone || userData.email || ''}
+          </Text>
         </View>
 
         <TouchableOpacity style={styles.addButton} onPress={handleAddFriend}>

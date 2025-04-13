@@ -12,6 +12,8 @@ import ResetPassword from "./src/screens/login/ResetPassword";
 import AddFriend from "./src/screens/contacts/AddFriend";
 import ProfileScreen from "./src/screens/pages/ProfileScreen";
 import EditProfile from "./src/screens/pages/EditProfile";
+import QRScanner from "./src/screens/contacts/QRScanner";
+import AddFriendConfirmation from "./src/screens/contacts/AddFriendConfirmation";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { AuthProvider } from "./src/contexts/AuthContext";
@@ -73,9 +75,15 @@ export default function App() {
             component={AddFriend}
             options={{ headerShown: false }}
           />
+          <Stack.Screen
+            name="AddFriendConfirmation"
+            component={AddFriendConfirmation}
+            options={{ headerShown: false }}
+          />
           
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="EditProfile" component={EditProfile} />
+          <Stack.Screen name="QRScanner" component={QRScanner} />
         </Stack.Navigator>
       </NavigationContainer>
     </AuthProvider>
