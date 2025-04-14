@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uploadFileToS3 } from './s3Service';
 
-const API_URL = "http://192.168.1.188:5000/api/message";
+const API_URL = "ttp://192.168.2.69:5000/api/message";
 
 export const sendFileMessage = async (senderId, receiverId, file) => {
   try {
