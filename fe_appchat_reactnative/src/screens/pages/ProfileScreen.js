@@ -1,38 +1,44 @@
-import React from "react";
-import { View, Text, Image, TouchableOpacity, StyleSheet } from "react-native";
+import React, { useContext } from "react";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Avatar, Button } from "react-native-paper";
 import { useNavigation } from "@react-navigation/native";
+import { AuthContext } from "../../contexts/AuthContext"; // Import AuthContext
 
 const ProfileScreen = () => {
+  const { user } = useContext(AuthContext); // Lấy thông tin người dùng từ AuthContext
   const navigation = useNavigation();
+
+  // Kiểm tra nếu không có user (chưa đăng nhập)
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Bạn cần đăng nhập để xem hồ sơ.</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      {/* Ảnh nền */}
-      <Image
-        source={{
-          uri: "https://res.cloudinary.com/dnta8sd9z/image/upload/v1733287554/ReactNative_MusicApp/owl_avatar.jpg",
-        }}
-        style={styles.coverPhoto}
-      />
-
       {/* Avatar */}
       <View style={styles.avatarContainer}>
         <Avatar.Image
           source={{
-            uri: "https://res.cloudinary.com/dnta8sd9z/image/upload/v1731122808/ReactNative_MusicApp/suuget02_asuc7b.jpg",
+            uri:
+              user.primary_avatar ||
+              "https://res.cloudinary.com/dnta8sd9z/image/upload/v1731122808/ReactNative_MusicApp/suuget02_asuc7b.jpg", // Sử dụng avatar từ user, nếu không có thì dùng mặc định
           }}
-          size={90}
+          size={120} // Tăng kích thước avatar
         />
-        <TouchableOpacity style={styles.editIcon}
-         onPress={() => navigation.navigate("EditProfile")} 
+        <TouchableOpacity
+          style={styles.editIcon}
+          onPress={() => navigation.navigate("EditProfile")}
         >
           <Text style={styles.editText}>✏️</Text>
         </TouchableOpacity>
       </View>
 
       {/* Tên người dùng */}
-      <Text style={styles.userName}>Khang Đinh</Text>
+      <Text style={styles.userName}>{user.name || "Người dùng"}</Text>
 
       {/* Các nút */}
       <View style={styles.buttonRow}>
@@ -49,7 +55,9 @@ const ProfileScreen = () => {
 
       {/* Nội dung nhật ký */}
       <View style={styles.journalContainer}>
-        <Text style={styles.journalTitle}>Hôm nay Khang Đinh có gì vui?</Text>
+        <Text style={styles.journalTitle}>
+          Hôm nay {user.name || "bạn"} có gì vui?
+        </Text>
         <Text style={styles.journalSubtitle}>
           Đây là nhật ký của bạn - Hãy làm đầy Nhật ký với những dấu ấn cuộc đời
           và kỷ niệm đáng nhớ nhé!
@@ -68,16 +76,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#fff",
     alignItems: "center",
+    paddingTop: 60, // Thêm paddingTop để giao diện không sát đỉnh
   },
-  coverPhoto: {
-    width: "100%",
-    height: 200,
-    borderBottomLeftRadius: 100,
-    borderBottomRightRadius: 100,
-    transform: [{ scaleY: 1.2 }], // Kéo phần dưới xuống
+  errorText: {
+    fontSize: 16,
+    color: "red",
+    textAlign: "center",
+    marginTop: 20,
   },
   avatarContainer: {
-    marginTop: -50,
+    marginTop: 20, // Điều chỉnh vị trí avatar
     alignItems: "center",
   },
   editIcon: {
@@ -94,31 +102,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   userName: {
-    fontSize: 20,
+    fontSize: 24, // Tăng kích thước tên
     fontWeight: "bold",
-    marginTop: 10,
+    marginTop: 15,
+    color: "#333",
   },
   buttonRow: {
     flexDirection: "row",
-    marginTop: 15,
+    marginTop: 20,
     justifyContent: "center",
   },
   smallButton: {
     backgroundColor: "#E0E0E0",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 15,
     marginHorizontal: 5,
     justifyContent: "center",
     alignItems: "center",
   },
   smallButtonText: {
-    fontSize: 12,
+    fontSize: 14,
   },
   favoriteButton: {
     backgroundColor: "#E0E0E0",
     paddingHorizontal: 15,
-    paddingVertical: 5,
+    paddingVertical: 8,
     borderRadius: 15,
     marginHorizontal: 5,
     justifyContent: "center",
@@ -126,28 +135,30 @@ const styles = StyleSheet.create({
   },
   favoriteText: {
     color: "red",
-    fontSize: 12,
+    fontSize: 14,
   },
   journalContainer: {
-    marginTop: 20,
+    marginTop: 30,
     width: "85%",
     alignItems: "center",
   },
   journalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "bold",
     textAlign: "center",
+    color: "#333",
   },
   journalSubtitle: {
     fontSize: 14,
     textAlign: "center",
-    marginTop: 5,
+    marginTop: 10,
     color: "gray",
   },
   uploadButton: {
     marginTop: 20,
     backgroundColor: "#0066FF",
     borderRadius: 20,
+    paddingHorizontal: 10,
   },
 });
 

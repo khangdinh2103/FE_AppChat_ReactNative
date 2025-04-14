@@ -11,7 +11,7 @@ import {
   Alert,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import CountryPicker from "react-native-country-picker-modal";
+// import CountryPicker from "react-native-country-picker-modal";
 import { useNavigation } from "@react-navigation/native";
 import { AuthContext } from "../../contexts/AuthContext"; // Thêm context
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -24,6 +24,9 @@ export default function Login(props) {
   const [countryCode, setCountryCode] = useState("VN");
   const [visible, setVisible] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+
   const navigation = useNavigation();
   const { login } = useContext(AuthContext); // Sử dụng context để cập nhật trạng thái đăng nhập
 
@@ -34,39 +37,68 @@ export default function Login(props) {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert("Lỗi", "Vui lòng nhập đầy đủ email và mật khẩu.");
+      Alert.alert("Lỗi", "Vui lòng nhập đầy đủ thông tin.");
       return;
     }
-
+  
     try {
-      const response = await loginUser({ email, password });
-      // 🔍 Kiểm tra phản hồi từ API
-      console.log("API Response:", response.data);
+      const response = await loginUser({ email: email, password });
 
-      // ✅ Truy xuất accessToken từ `data`
-      const token = response.data?.data?.accessToken;
-      const user = response.data?.data?.user;
 
-      if (!token || !user) {
-        throw new Error("Dữ liệu phản hồi không hợp lệ");
+      if (response.data?.status === 'success') {
+        const { accessToken, user } = response.data.data;
+        
+        // Store token and user data
+        await AsyncStorage.multiSet([
+          ['accessToken', accessToken],
+          ['user', JSON.stringify(user)]
+        ]);
+
+        // Update auth context with both user and token
+        login({ user, accessToken });
+
+        // Use reset instead of navigate to prevent going back
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MyTabs' }],
+        });
+      } else {
+        throw new Error(response.data?.message || "Đăng nhập thất bại");
       }
-
-      await AsyncStorage.setItem("accessToken", token);
-      await AsyncStorage.setItem("user", JSON.stringify(user));
-      login(user);
-      navigation.navigate("MyTabs");
     } catch (error) {
-      Alert.alert("Lỗi đăng nhập", "Email hoặc mật khẩu không đúng.");
-      console.error("Lỗi đăng nhập:", error);
+      console.log("Lỗi đăng nhập:", error.response?.data || error);
+  
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Email hoặc mật khẩu không đúng.";
+  
+      if (message.toLowerCase().includes("mật khẩu")) {
+        setPasswordError("Mật khẩu không đúng");
+        setEmailError("");
+      } else {
+        setEmailError("Email không tồn tại");
+        setPasswordError("");
+      }
+  
+      Alert.alert("Lỗi đăng nhập", message);
+    }
+  };
+  
+  const validateEmail = (text) => {
+    setEmail(text);
+    if (!text) {
+      setEmailError("Vui lòng nhập email");
+    } else if (!/\S+@\S+\.\S+/.test(text)) {
+      setEmailError("Email không hợp lệ");
+    } else {
+      setEmailError("");
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.row}>
           <TouchableOpacity onPress={() => props.navigation.goBack()}>
             <Ionicons name="chevron-back" size={28} color="#0F1828" />
@@ -80,26 +112,39 @@ export default function Login(props) {
         </Text>
 
         {/* Email */}
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, emailError && { borderColor: "red", borderWidth: 1 }]}>
           <Ionicons name="mail-outline" size={20} color="#8E8E93" />
           <TextInput
             placeholder="Email"
             placeholderTextColor="#8E8E93"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={validateEmail}
             style={styles.input}
             keyboardType="email-address"
+            autoCapitalize="none"
           />
         </View>
+        {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
 
         {/* Password */}
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, passwordError && { borderColor: "red", borderWidth: 1 }]}>
           <Ionicons name="lock-closed-outline" size={20} color="#8E8E93" />
           <TextInput
             placeholder="Mật khẩu"
             placeholderTextColor="#8E8E93"
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(text) => {
+              setPassword(text);
+              if (passwordError) setPasswordError("");
+            }}
+            onBlur={() => {
+              if (!password) {
+                setPasswordError("Vui lòng nhập mật khẩu");
+              } else if (password.length < 6) {
+                setPasswordError("Mật khẩu phải có ít nhất 6 ký tự");
+              }
+            }}
+            
             style={styles.input}
             secureTextEntry={!showPassword}
           />
@@ -111,8 +156,9 @@ export default function Login(props) {
             />
           </TouchableOpacity>
         </View>
+        {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
 
-        <TouchableOpacity onPress={() => alert("Lấy lại mật khẩu")}>
+        <TouchableOpacity onPress={() => navigation.navigate("ForgotPasswordScreen")}>
           <Text style={styles.forgotPassword}>Quên mật khẩu?</Text>
         </TouchableOpacity>
 
@@ -176,6 +222,13 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     fontSize: 14,
   },
+  errorText: {
+    color: "red",
+    fontSize: 12,
+    marginTop: -12,
+    marginBottom: 12,
+    marginLeft: 8,
+  },  
   loginButton: {
     backgroundColor: "#002DE3",
     paddingVertical: 18,
