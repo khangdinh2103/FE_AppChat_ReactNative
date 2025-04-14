@@ -2,7 +2,7 @@ import io from 'socket.io-client';
 // import { API_URL } from '@env';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // const API_URL = "https://1814-2a09-bac5-d46c-25d7-00-3c5-3e.ngrok-free.app";
-const API_URL = "http://192.168.1.188:5000"
+const API_URL = "http://192.168.2.69:5000"
 let socket;
 
 export const initializeSocket = async () => {
@@ -53,4 +53,10 @@ export const subscribeToTyping = (callback) => {
 export const emitTyping = ({ conversation_id, receiver_id, isTyping }) => {
   if (!socket) return;
   socket.emit('typing', { conversation_id, receiver_id, isTyping });
+};
+
+// Add the subscribeToMessageRevocation function to socketService.js
+export const subscribeToMessageRevocation = (callback) => {
+  if (!socket) return;
+  socket.on('messageRevoked', callback);
 };
