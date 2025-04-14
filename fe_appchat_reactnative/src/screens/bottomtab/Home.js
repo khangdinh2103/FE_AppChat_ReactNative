@@ -33,7 +33,6 @@ const Home = () => {
     const setupSocket = async () => {
       const socketInstance = await initializeSocket();
       socketRef.current = socketInstance;
-      fetchConversations();
   
       if (socketInstance) {
         socketInstance.on("receiveMessage", () => {
@@ -53,7 +52,7 @@ const Home = () => {
   
   useEffect(() => {
     fetchConversations();
-  }, []);
+  }, [fetchConversations]);
   const markConversationAsRead = async (conversationId, messageId) => {
     const stored = await AsyncStorage.getItem("readMessages");
     const parsed = stored ? JSON.parse(stored) : {};
@@ -63,7 +62,7 @@ const Home = () => {
   useFocusEffect(
     useCallback(() => {
       fetchConversations();
-    }, [])
+    }, [fetchConversations])
   );
 
 
@@ -105,6 +104,7 @@ const Home = () => {
     try {
       setLoading(true);
       const response = await getConversations();
+      console.log("Fetched conversations:", response);
       if (response.status === "success") {
         const readMap = await getReadMessageMap();
         const updatedList = response.data.map((item) => {
@@ -132,10 +132,12 @@ const Home = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []); // Remove any dependencies to avoid circular dependencies
 
   // Now improve the socket connection setup
   useEffect(() => {
+    console.log("Setting up socket connection for Home screen");
+    
     const setupSocket = async () => {
       const socketInstance = await initializeSocket();
       socketRef.current = socketInstance;
@@ -156,15 +158,32 @@ const Home = () => {
     setupSocket();
   
     return () => {
+      console.log("Cleaning up socket connection in Home screen");
       if (socketRef.current) {
         socketRef.current.off("receiveMessage");
       }
     };
-  }, [fetchConversations]);
+  }, []); // Remove fetchConversations dependency to avoid circular references
   
   // Keep your initial fetch
   useEffect(() => {
     fetchConversations();
+  }, [fetchConversations]);
+  
+  // Add a separate effect for message subscription
+  useEffect(() => {
+    console.log("Setting up message subscription in Home screen");
+    
+    // Subscribe to messages using the service function
+    const unsubscribe = subscribeToMessages((data) => {
+      console.log("Message subscription received data:", data);
+      fetchConversations();
+    });
+    
+    return () => {
+      console.log("Cleaning up message subscription in Home screen");
+      if (unsubscribe) unsubscribe();
+    };
   }, [fetchConversations]);
   const renderItem = ({ item }) => {
     // Handle search result items differently
