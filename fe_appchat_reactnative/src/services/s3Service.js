@@ -12,20 +12,23 @@ export const uploadFileToS3 = async (uri, fileType) => {
   try {
     const response = await fetch(uri);
     const blob = await response.blob();
-    
     const extension = uri.split('.').pop();
     const fileName = `${uuidv4()}.${extension}`;
-
+    
+    // Add folder structure based on file type
+    const folder = fileType === 'video' ? 'videos' : 
+                  fileType === 'image' ? 'images' : 'files';
+    
     const params = {
       Bucket: "bucket-zele",
-      Key: fileName,
+      Key: `${folder}/${fileName}`,
       Body: blob,
       ContentType: blob.type,
       ACL: "public-read",
     };
 
     const uploadResponse = await s3.upload(params).promise();
-    console.log("Upload thành công, URL:", uploadResponse.Location);
+    console.log("Upload successful, URL:", uploadResponse.Location);
 
     return {
       url: uploadResponse.Location,
@@ -34,7 +37,7 @@ export const uploadFileToS3 = async (uri, fileType) => {
       fileSize: blob.size
     };
   } catch (error) {
-    console.error("Lỗi upload lên S3:", error);
+    console.error("Error uploading to S3:", error);
     throw error;
   }
 };

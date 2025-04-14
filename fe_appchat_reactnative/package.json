@@ -20,6 +20,7 @@
     "date-fns": "^2.30.0",
     "dotenv": "^16.5.0",
     "expo": "~52.0.33",
+    "expo-av": "~15.0.2",
     "expo-barcode-scanner": "^13.0.1",
     "expo-camera": "^16.0.18",
     "expo-document-picker": "^13.0.3",
@@ -42,6 +43,7 @@
     "react-native-safe-area-context": "^5.2.0",
     "react-native-screens": "^4.6.0",
     "react-native-vector-icons": "^10.2.0",
+    "react-native-vimeo-iframe": "^1.2.1",
     "react-native-web": "^0.19.13",
     "socket.io-client": "^4.8.1",
     "uuid": "^11.1.0"
