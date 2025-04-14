@@ -2,7 +2,7 @@ import io from 'socket.io-client';
 // import { API_URL } from '@env';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // const API_URL = "https://1814-2a09-bac5-d46c-25d7-00-3c5-3e.ngrok-free.app";
-const API_URL = "http://192.168.2.74:5000"
+const API_URL = "http://192.168.1.193:5000"
 let socket;
 
 export const initializeSocket = async () => {
@@ -29,6 +29,11 @@ export const initializeSocket = async () => {
       console.log('Socket received message:', data);
     });
 
+    // Add message revocation event logging
+    socket.on('messageRevoked', (data) => {
+      console.log('Message revoked:', data);
+    });
+
     return socket;
   } catch (error) {
     console.error('Socket initialization error:', error);
@@ -40,9 +45,19 @@ export const emitMessage = (messageData) => {
   socket.emit('sendMessage', messageData);
 };
 
+export const revokeMessage = (messageId, userId) => {
+  if (!socket) return;
+  socket.emit('revokeMessage', { messageId, userId });
+};
+
 export const subscribeToMessages = (callback) => {
   if (!socket) return;
   socket.on('receiveMessage', callback);
+};
+
+export const subscribeToMessageRevocation = (callback) => {
+  if (!socket) return;
+  socket.on('messageRevoked', callback);
 };
 
 export const subscribeToTyping = (callback) => {

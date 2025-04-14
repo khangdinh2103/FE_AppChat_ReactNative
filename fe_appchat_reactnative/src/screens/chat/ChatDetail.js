@@ -1,15 +1,16 @@
 // Move all imports to the top
 import React, {useRef, useState, useCallback, useEffect, useContext } from "react";
-import { View, Text, Image, StyleSheet, TouchableOpacity, TextInput, Platform } from "react-native";
-import { GiftedChat, InputToolbar, Composer, Send } from "react-native-gifted-chat";
+import { View, Text, Image, StyleSheet, TouchableOpacity, TextInput, Platform, Alert } from "react-native";
+import { GiftedChat, InputToolbar, Composer, Send, Bubble } from "react-native-gifted-chat";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { AuthContext } from "../../contexts/AuthContext";
-import { getMessages, sendMessage } from "../../services/chatService";
-import { initializeSocket, emitMessage, subscribeToMessages } from "../../services/socketService";
+import { getMessages, sendMessage, revokeMessage } from "../../services/chatService";
+import { initializeSocket, emitMessage, subscribeToMessages, subscribeToMessageRevocation } from "../../services/socketService";
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { uploadFileToS3 } from '../../services/s3Service';
+
 
 const ChatDetail = () => {
   const route = useRoute();
@@ -20,7 +21,7 @@ const ChatDetail = () => {
   const [loading, setLoading] = useState(true);
   const socketRef = useRef(null);
   const [isShowOptions, setIsShowOptions] = useState(false);
-
+  
   // In useEffect for socket setup
   useEffect(() => {
     const setupSocket = async () => {
@@ -61,8 +62,13 @@ const ChatDetail = () => {
               }
             };
   
-            // Handle different message types
-            if (msg.message_type === 'image') {
+            // Check if message is revoked
+            if (msg.is_revoked) {
+              baseMessage.text = "Tin nhắn đã được thu hồi";
+              baseMessage.revoked = true;
+            } 
+            // Handle different message types for non-revoked messages
+            else if (msg.message_type === 'image') {
               baseMessage.image = msg.content;
             } else if (msg.message_type === 'file') {
               baseMessage.text = msg.file_meta?.file_name || msg.content;
@@ -96,8 +102,13 @@ const ChatDetail = () => {
         }
       };
   
-      // Handle different message types for real-time messages
-      if (newMessage.message_type === 'image') {
+      // ✅ Nếu là tin nhắn đã thu hồi
+      if (newMessage.is_revoked) {
+        formattedMessage.text = "Tin nhắn đã được thu hồi";
+        formattedMessage.revoked = true;
+      }
+      // ✅ Nếu chưa thu hồi thì xử lý theo loại
+      else if (newMessage.message_type === 'image') {
         formattedMessage.image = newMessage.content;
       } else if (newMessage.message_type === 'file') {
         formattedMessage.text = newMessage.file_meta?.file_name || newMessage.content;
@@ -109,6 +120,7 @@ const ChatDetail = () => {
       setMessages(prev => GiftedChat.append(prev, [formattedMessage]));
     }
   };
+  
   
   // Add separate useEffect for message subscription
   useEffect(() => {
@@ -124,29 +136,36 @@ const ChatDetail = () => {
 
   const onSend = useCallback(async (newMessages = []) => {
     const messageText = newMessages[0].text;
+    const tempId = newMessages[0]._id;
+  
     try {
       setMessages(previousMessages =>
         GiftedChat.append(previousMessages, newMessages)
       );
-
-      emitMessage({
-        conversation_id: conversationId,
-        receiver_id: receiverId,
-        content: messageText,
-        sender_id: user._id,
-        timestamp: new Date()
-      });
-
-      await sendMessage({
+  
+      // Gửi message lên server và nhận về ID thật
+      const response = await sendMessage({
         receiverId: receiverId,
         message_type: 'text',
         content: messageText,
         file_id: null
       });
+  
+      if (response?.data?.status === 'success') {
+        const serverMessageId = response.data.data._id;
+  
+        // Cập nhật lại _id của tin nhắn đã gửi
+        setMessages(prevMessages =>
+          prevMessages.map(msg =>
+            msg._id === tempId ? { ...msg, _id: serverMessageId } : msg
+          )
+        );
+      }
     } catch (error) {
       console.error('Error sending message:', error);
     }
   }, [receiverId, conversationId, user._id]);
+  
 
   const renderInputToolbar = (props) => {
     return (
@@ -264,7 +283,124 @@ const ChatDetail = () => {
     }
   };
   
-  // In the return statement, update the options container
+  // Add this state for tracking long-pressed message
+  const [selectedMessage, setSelectedMessage] = useState(null);
+  
+  // Add this useEffect for message revocation subscription
+  useEffect(() => {
+    if (socketRef.current) {
+      subscribeToMessageRevocation(handleMessageRevoked);
+    }
+    
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.off('messageRevoked', handleMessageRevoked);
+      }
+    };
+  }, [messages]);
+  
+  // Add handler for revoked messages
+  const handleMessageRevoked = (data) => {
+    if (data.messageId) {
+      setMessages(prevMessages => 
+        prevMessages.map(msg => 
+          msg._id === data.messageId 
+            ? { ...msg, text: "Tin nhắn đã được thu hồi", revoked: true } 
+            : msg
+        )
+      );
+    }
+  };
+  
+  // Add function to handle message long press
+  const onLongPress = (context, message) => {
+    // Only allow revocation for user's own messages
+    if (message.user._id === user._id) {
+      setSelectedMessage(message);
+      Alert.alert(
+        "Bạn muốn thu hồi tin nhắn?",
+        "Chọn chức năng",
+        [
+          {
+            text: "Thu hồi tin nhắn",
+            onPress: () => handleRevokeMessage(message._id),
+          },
+          {
+            text: "Hủy",
+            style: "cancel",
+          },
+        ],
+        { cancelable: true }
+      );
+    }
+  };
+  
+  // Add function to handle message revocation
+  const handleRevokeMessage = async (messageId) => {
+    try {
+      const response = await revokeMessage(messageId);
+      
+      if (response.data.status === 'success') {
+        // Update local message state
+        setMessages(prevMessages => 
+          prevMessages.map(msg => 
+            msg._id === messageId 
+              ? { ...msg, text: "Tin nhắn đã được thu hồi", revoked: true } 
+              : msg
+          )
+        );
+        
+        // Emit socket event for real-time update
+        if (socketRef.current) {
+          socketRef.current.emit('revokeMessage', { 
+            messageId, 
+            userId: user._id,
+            conversationId
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error revoking message:', error);
+      Alert.alert('Error', 'Failed to revoke message');
+    }
+  };
+
+  // Add renderBubble function to customize message appearance
+  const renderBubble = (props) => {
+    const { currentMessage } = props;
+    const isRevoked = currentMessage.revoked;
+  
+    // Nếu bị thu hồi và là ảnh => ẩn ảnh
+    if (isRevoked) {
+      currentMessage.image = null;
+      currentMessage.file = null;
+    }
+    return (
+      <Bubble
+        {...props}
+        wrapperStyle={{
+          right: {
+            backgroundColor: isRevoked ? '#f0f0f0' : '#0084ff',
+          },
+          left: {
+            backgroundColor: isRevoked ? '#f0f0f0' : '#f1f0f0',
+          },
+        }}
+        textStyle={{
+          right: {
+            color: isRevoked ? '#999' : '#fff',
+            fontStyle: isRevoked ? 'italic' : 'normal',
+          },
+          left: {
+            color: isRevoked ? '#999' : '#000',
+            fontStyle: isRevoked ? 'italic' : 'normal',
+          },
+        }}
+      />
+    );
+  };
+
+  // In the return statement, update GiftedChat component
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -310,6 +446,7 @@ const ChatDetail = () => {
           avatar: user.avatar
         }}
         renderInputToolbar={renderInputToolbar}
+        renderBubble={renderBubble}
         renderAvatarOnTop
         renderUsernameOnMessage
         placeholder="Tin nhắn"
@@ -317,6 +454,7 @@ const ChatDetail = () => {
         alignTop={false}
         inverted={true}
         bottomOffset={Platform.select({ ios: 80, android: 0 })}
+        onLongPress={onLongPress}
       />
 
       {isShowOptions && (
@@ -424,7 +562,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginLeft: 0,
     marginTop: 5,
-    marginBottom: 5,
+    marginBottom: 15,
   },
   sendContainer: {
     justifyContent: 'center',

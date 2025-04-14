@@ -1,7 +1,7 @@
 import axios from 'axios';
 // import { API_URL } from '@env';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-const API_URL = "http://192.168.2.74:5000";
+const API_URL = "http://192.168.1.193:5000";
 // Create axios instance with base configuration
 const chatApi = axios.create({
   baseURL: API_URL
@@ -72,6 +72,26 @@ export const sendMessage = async (messageData) => {
     });
     return response;
   } catch (error) {
+    throw error;
+  }
+};
+
+// Add this function to your existing chatService.js
+export const revokeMessage = async (messageId) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    const response = await axios.put(
+      `${API_URL}/api/message/revoke/${messageId}`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    return response;
+  } catch (error) {
+    console.error('Error revoking message:', error);
     throw error;
   }
 };
