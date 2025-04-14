@@ -432,28 +432,35 @@ const ChatDetail = () => {
     }
   };
 
-  // Add renderBubble function to customize message appearance
+  // Update the renderBubble function to better handle media content
   const renderBubble = (props) => {
-    const { currentMessage } = props;
-    console.log("hi", currentMessage);
+    const { currentMessage, position } = props;
   
     // Nếu tin nhắn bị thu hồi
     if (currentMessage.revoked) {
       return (
-        <Bubble
-          {...props}
-          wrapperStyle={{
-            right: { backgroundColor: '#ccc' },
-            left: { backgroundColor: '#ccc' }
-          }}
-        />
+        <View style={[
+          styles.revokedContainer,
+          position === 'right' ? styles.revokedContainerRight : styles.revokedContainerLeft
+        ]}>
+          <Ionicons 
+            name="refresh-circle-outline" 
+            size={16} 
+            color="#888" 
+            style={styles.revokedIcon} 
+          />
+          <Text style={styles.revokedText}>Tin nhắn đã được thu hồi</Text>
+        </View>
       );
     }
   
     // Nếu là video
     if (currentMessage.video) {
       return (
-        <View style={{ padding: 10 }}>
+        <View style={[
+          styles.mediaBubble,
+          position === 'right' ? styles.mediaBubbleRight : styles.mediaBubbleLeft
+        ]}>
           <Video
             source={{ uri: currentMessage.video }}
             loop={false}
@@ -462,16 +469,54 @@ const ChatDetail = () => {
             rate={1.0}
             volume={1.0}
             isMuted={false}
-            resizeMode="contain"
+            resizeMode="cover"
             shouldPlay={false}
             useNativeControls
-            style={{ width: 250, height: 180, borderRadius: 10 }}
+            style={styles.videoContent}
           />
+          <Text style={[
+            styles.mediaTimestamp,
+            position === 'right' ? styles.mediaTimestampRight : styles.mediaTimestampLeft
+          ]}>
+            {new Date(currentMessage.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+          </Text>
+        </View>
+      );
+    }
+    
+    // Nếu là hình ảnh
+    if (currentMessage.image) {
+      return (
+        <View style={[
+          styles.mediaBubble,
+          position === 'right' ? styles.mediaBubbleRight : styles.mediaBubbleLeft
+        ]}>
+          <Image 
+            source={{ uri: currentMessage.image }} 
+            style={styles.imageContent}
+            resizeMode="cover"
+          />
+          <Text style={[
+            styles.mediaTimestamp,
+            position === 'right' ? styles.mediaTimestampRight : styles.mediaTimestampLeft
+          ]}>
+            {new Date(currentMessage.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+          </Text>
         </View>
       );
     }
   
-    return <Bubble {...props} />;
+    // Default bubble for text messages
+    return (
+      <Bubble
+        {...props}
+        wrapperStyle={{
+          right: { backgroundColor: '#0084ff' },
+          left: { backgroundColor: '#f0f0f0' }
+        }}
+        onLongPress={() => onLongPress(props, currentMessage)}
+      />
+    );
   };
 
   // In the return statement, update GiftedChat component
@@ -708,6 +753,77 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     marginTop: 5,
     marginRight: 5,
+  },
+  // Media styles (for both images and videos)
+  mediaBubble: {
+    borderRadius: 15,
+    overflow: 'hidden',
+    marginBottom: 10,
+    width: 180,  // Reduced from 220
+    maxWidth: 180, // Reduced from 220
+  },
+  mediaBubbleRight: {
+    marginLeft: 60,
+    alignSelf: 'flex-end',
+    backgroundColor: '#0084ff',
+  },
+  mediaBubbleLeft: {
+    marginRight: 60,
+    alignSelf: 'flex-start',
+    backgroundColor: '#f1f0f0',
+  },
+  imageContent: {
+    width: 180,  // Reduced from 220
+    height: 180,  // Reduced from 220
+    borderTopLeftRadius: 15,
+    borderTopRightRadius: 15,
+  },
+  videoContent: {
+    width: 180,  // Reduced from 220
+    height: 180,  // Reduced from 220
+    borderTopLeftRadius: 15,
+    borderTopRightRadius: 15,
+  },
+  mediaTimestamp: {
+    fontSize: 10,
+    padding: 5,
+    alignSelf: 'flex-end',
+  },
+  mediaTimestampRight: {
+    color: '#fff',
+  },
+  mediaTimestampLeft: {
+    color: '#888',
+  },
+  
+  // Revoked message styles
+  revokedContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 15,
+    marginBottom: 5,
+    maxWidth: 250,
+  },
+  revokedContainerRight: {
+    backgroundColor: '#f0f0f0',
+    marginLeft: 60,
+    alignSelf: 'flex-end',
+  },
+  revokedContainerLeft: {
+    backgroundColor: '#f8f8f8',
+    marginRight: 60,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  revokedIcon: {
+    marginRight: 5,
+  },
+  revokedText: {
+    color: '#888',
+    fontStyle: 'italic',
+    fontSize: 14,
   },
 });
 
