@@ -12,6 +12,7 @@ export const uploadFileToS3 = async (uri, fileType) => {
   try {
     const response = await fetch(uri);
     const blob = await response.blob();
+    
     const extension = uri.split('.').pop();
     const fileName = `${uuidv4()}.${extension}`;
 

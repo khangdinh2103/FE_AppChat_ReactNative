@@ -69,5 +69,3 @@ export const emitTyping = ({ conversation_id, receiver_id, isTyping }) => {
   if (!socket) return;
   socket.emit('typing', { conversation_id, receiver_id, isTyping });
 };
-
-
