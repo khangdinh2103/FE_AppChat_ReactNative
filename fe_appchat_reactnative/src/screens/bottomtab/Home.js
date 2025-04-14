@@ -33,10 +33,10 @@ const Home = () => {
     const setupSocket = async () => {
       const socketInstance = await initializeSocket();
       socketRef.current = socketInstance;
+      fetchConversations();
   
       if (socketInstance) {
         socketInstance.on("receiveMessage", () => {
-          console.log("New message received in Home screen");
           fetchConversations(); // Đảm bảo đây là callback mới
         });
       }
