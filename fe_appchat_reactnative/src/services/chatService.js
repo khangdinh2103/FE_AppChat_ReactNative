@@ -98,3 +98,23 @@ export const sendMessage = async (messageData) => {
     throw error;
   }
 };
+
+// Add this function to your existing chatService.js
+export const revokeMessage = async (messageId) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    const response = await axios.put(
+      `${API_URL}/api/message/revoke/${messageId}`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    return response;
+  } catch (error) {
+    console.error('Error revoking message:', error);
+    throw error;
+  }
+};

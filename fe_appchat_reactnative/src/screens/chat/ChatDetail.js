@@ -47,7 +47,7 @@ const ChatDetail = () => {
     return () => {
       if (socketRef.current) {
         socketRef.current.off('receiveMessage');
-        socketRef.current.disconnect();
+        // socketRef.current.disconnect();
       }
     };
   }, [conversationId]);
@@ -71,10 +71,12 @@ const ChatDetail = () => {
               }
             };
   
-            // Improved media handling
-            if (msg.is_revoked) {
-              baseMessage.text = "Tin nhắn đã được thu hồi";
-              baseMessage.revoked = true;
+            // Handle different message types
+            if (msg.message_type === 'image') {
+              baseMessage.image = msg.content;
+            } else if (msg.message_type === 'file') {
+              baseMessage.text = msg.file_meta?.file_name || msg.content;
+              baseMessage.file = msg.file_meta;
             } else {
               switch (msg.message_type) {
                 case 'image':
@@ -269,126 +271,6 @@ const ChatDetail = () => {
       </View>
     );
   };
-
-  // Update handleReceiveMessage to handle image messages
-  // Move handleReceiveMessage outside of useEffect
-  const handleReceiveMessage = (newMessage) => {
-    if (newMessage.conversation_id === conversationId) {
-      const formattedMessage = {
-        _id: newMessage._id || Date.now().toString(),
-        createdAt: new Date(newMessage.timestamp),
-        user: {
-          _id: newMessage.sender_id,
-          name: name,
-          avatar: avatar
-        }
-      };
-  
-      // ✅ Nếu là tin nhắn đã thu hồi
-      if (newMessage.is_revoked) {
-        formattedMessage.text = "Tin nhắn đã được thu hồi";
-        formattedMessage.revoked = true;
-      }
-      // ✅ Nếu chưa thu hồi thì xử lý theo loại
-      else if (newMessage.message_type === 'image') {
-        formattedMessage.image = newMessage.content;
-      } else if (newMessage.message_type === 'video') {
-        formattedMessage.video = newMessage.content;
-      } else if (newMessage.message_type === 'file') {
-        formattedMessage.text = newMessage.file_meta?.file_name || newMessage.content;
-        formattedMessage.file = newMessage.file_meta;
-      } else {
-        formattedMessage.text = newMessage.content;
-      }
-  
-      setMessages(prev => GiftedChat.append(prev, [formattedMessage]));
-    }
-  };
-  
-  
-  // Add separate useEffect for message subscription
-  useEffect(() => {
-    subscribeToMessages(handleReceiveMessage);
-  
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.off('receiveMessage', handleReceiveMessage);
-      }
-    };
-  }, [conversationId, name, avatar]);
-  
-
-  // const onSend = useCallback(async (newMessages = []) => {
-  //   const messageText = newMessages[0].text;
-  //   const tempId = newMessages[0]._id;
-  
-  //   try {
-  //     setMessages(previousMessages =>
-  //       GiftedChat.append(previousMessages, newMessages)
-  //     );
-  
-  //     // Gửi message lên server và nhận về ID thật
-  //     const response = await sendMessage({
-  //       receiverId: receiverId,
-  //       message_type: 'text',
-  //       content: messageText,
-  //       file_id: null
-  //     });
-  
-  //     if (response?.data?.status === 'success') {
-  //       const serverMessageId = response.data.data._id;
-  
-  //       // Cập nhật lại _id của tin nhắn đã gửi
-  //       setMessages(prevMessages =>
-  //         prevMessages.map(msg =>
-  //           msg._id === tempId ? { ...msg, _id: serverMessageId } : msg
-  //         )
-  //       );
-  //     }
-  //   } catch (error) {
-  //     console.error('Error sending message:', error);
-  //   }
-  // }, [receiverId, conversationId, user._id]);
-  
-
-  // const renderInputToolbar = (props) => {
-  //   return (
-  //     <View style={styles.inputContainer}>
-  //       <TouchableOpacity style={styles.optionButton} onPress={() => setIsShowOptions(!isShowOptions)}>
-  //         <Ionicons name="add-circle-outline" size={24} color="#0084ff" />
-  //       </TouchableOpacity>
-        
-  //       <TouchableOpacity style={styles.optionButton}>
-  //         <Ionicons name="camera-outline" size={24} color="#0084ff" />
-  //       </TouchableOpacity>
-        
-  //       <TouchableOpacity style={styles.optionButton}>
-  //         <Ionicons name="image-outline" size={24} color="#0084ff" />
-  //       </TouchableOpacity>
-        
-  //       <TouchableOpacity style={styles.optionButton}>
-  //         <Ionicons name="mic-outline" size={24} color="#0084ff" />
-  //       </TouchableOpacity>
-
-  //       <InputToolbar
-  //         {...props}
-  //         containerStyle={styles.inputToolbar}
-  //         renderComposer={(composerProps) => (
-  //           <Composer
-  //             {...composerProps}
-  //             textInputStyle={styles.composer}
-  //             placeholder="Tin nhắn"
-  //           />
-  //         )}
-  //         renderSend={(sendProps) => (
-  //           <Send {...sendProps} containerStyle={styles.sendContainer}>
-  //             <Ionicons name="send" size={24} color="#0084ff" />
-  //           </Send>
-  //         )}
-  //       />
-  //     </View>
-  //   );
-  // };
 
   // Add these functions before the return statement, after onSend
   const handleImagePick = async () => {
