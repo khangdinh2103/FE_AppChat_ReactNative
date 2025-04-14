@@ -8,6 +8,7 @@ import Contacts from "../../src/screens/bottomtab/Contacts";
 import Activity from "../../src/screens/bottomtab/Activity";
 import PersonalTabs from "./PersonalTabs";
 import ChatTabs from "./ChatTabs";
+import ContactTab from "./ContactTab";
 
 // Create the Tab navigator
 const Tab = createBottomTabNavigator();
@@ -78,7 +79,8 @@ const MyTabs = () => {
       />
       <Tab.Screen
         name="Danh bạ"
-        component={Contacts}
+        // component={Contacts}
+        component={ContactTab}
         options={{ headerShown: false }}
       />
       <Tab.Screen
@@ -91,7 +93,6 @@ const MyTabs = () => {
         component={PersonalTabs}
         options={{ headerShown: false }}
       />
-      
     </Tab.Navigator>
   );
 };
