@@ -47,7 +47,7 @@ const ChatDetail = () => {
     return () => {
       if (socketRef.current) {
         socketRef.current.off('receiveMessage');
-        socketRef.current.disconnect();
+        // socketRef.current.disconnect();
       }
     };
   }, [conversationId]);
@@ -346,7 +346,7 @@ const ChatDetail = () => {
       if (socketRef.current) {
         console.log('Cleaning up socket connection...');
         socketRef.current.off('receiveMessage');
-        socketRef.current.disconnect();
+        // Remove this line: socketRef.current.disconnect();
       }
     };
   }, [conversationId]);
