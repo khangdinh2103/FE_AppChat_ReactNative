@@ -1,7 +1,7 @@
 import axios from 'axios';
 // import { API_URL } from '@env';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-const API_URL = "http://192.168.2.74:5000";
+const API_URL = "http://192.168.1.188:5000";
 // Create axios instance with base configuration
 const chatApi = axios.create({
   baseURL: API_URL
@@ -59,19 +59,42 @@ export const getMessages = async (conversationId) => {
 export const sendMessage = async (messageData) => {
   try {
     const token = await AsyncStorage.getItem('accessToken');
-    const response = await axios.post(`${API_URL}/api/message/send`, {
-      receiverId: messageData.receiverId,
-      message_type: messageData.message_type,
-      content: messageData.content,
-      file_id: messageData.file_id
-    }, {
+    const formData = new FormData();
+
+    formData.append('receiverId', messageData.receiverId);
+    formData.append('message_type', messageData.message_type);
+    formData.append('content', messageData.content);
+
+    if (messageData.file_meta) {
+      const fileUri = messageData.file_meta.url;
+      const fileType = messageData.file_meta.file_type;
+      const fileName = messageData.file_meta.file_name;
+
+      // Handle video files specifically
+      if (messageData.message_type === 'video') {
+        formData.append('file', {
+          uri: fileUri,
+          type: 'video/mp4',
+          name: fileName || 'video.mp4',
+        });
+      } else {
+        formData.append('file', {
+          uri: fileUri,
+          type: fileType,
+          name: fileName,
+        });
+      }
+    }
+
+    const response = await axios.post(`${API_URL}/api/message/send`, formData, {
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'multipart/form-data',
       }
     });
     return response;
   } catch (error) {
+    console.error('Error in sendMessage:', error);
     throw error;
   }
 };
