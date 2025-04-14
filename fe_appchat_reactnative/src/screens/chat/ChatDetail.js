@@ -1,6 +1,6 @@
 // Move all imports to the top
 import React, {useRef, useState, useCallback, useEffect, useContext } from "react";
-import { View, Text, Image, StyleSheet, TouchableOpacity, TextInput, Platform, Alert } from "react-native";
+import { View, Text, Image, StyleSheet, TouchableOpacity, TextInput, Platform, Alert, Linking } from "react-native";
 import { GiftedChat, InputToolbar, Composer, Send, Bubble } from "react-native-gifted-chat";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { useRoute, useNavigation } from "@react-navigation/native";
@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { uploadFileToS3 } from '../../services/s3Service';
 import { Video } from 'expo-av';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const ChatDetail = () => {
   const route = useRoute();
@@ -22,6 +23,7 @@ const ChatDetail = () => {
   const socketRef = useRef(null);
   const [isShowOptions, setIsShowOptions] = useState(false);
   const [isNewConversation, setIsNewConversation] = useState(false);
+  
   
   // In useEffect for socket setup
   useEffect(() => {
@@ -90,7 +92,12 @@ const ChatDetail = () => {
   
             return baseMessage;
           });
-        setMessages(formattedMessages);
+        // Filter out locally deleted messages
+        const filteredMessages = formattedMessages.filter(
+          msg => !deletedMessageIds.includes(msg._id)
+        );
+        
+        setMessages(filteredMessages);
       }
     } catch (error) {
       console.error('Error details:', error.response?.data || error.message);
@@ -99,6 +106,11 @@ const ChatDetail = () => {
     }
   };
 
+  useEffect(() => {
+    if (conversationId) {
+      loadDeletedMessageIds();
+    }
+  }, [conversationId]);
   // Update onSend to handle new conversations
   const onSend = useCallback(async (newMessages = []) => {
     const messageText = newMessages[0].text;
@@ -165,10 +177,17 @@ const ChatDetail = () => {
   };
   
   // Update handleFileUpload to handle videos
-  const handleFileUpload = async (uri, type) => {
-    console.log("type:", type);
+  // Update handleFileUpload to handle files with metadata
+  const handleFileUpload = async (uri, type, fileMetadata = null) => {
+    console.log("Uploading:", type, uri, fileMetadata);
     try {
-      const fileData = await uploadFileToS3(uri);
+      // Check if uri is valid
+      if (!uri) {
+        throw new Error('Invalid file URI');
+      }
+      
+      const fileData = await uploadFileToS3(uri, fileMetadata);
+      console.log("File uploaded successfully:", fileData);
       
       const newMessage = {
         _id: Date.now().toString(),
@@ -184,15 +203,22 @@ const ChatDetail = () => {
         newMessage.image = fileData.url;
       } else if (type === 'video') {
         newMessage.video = fileData.url;
-      } else {
-        newMessage.text = fileData.fileName;
-        newMessage.file = fileData;
+      } else if (type === 'file') {
+        newMessage.text = fileData.fileName || 'File';
+        newMessage.file = {
+          url: fileData.url,
+          file_name: fileData.fileName,
+          file_type: fileData.fileType,
+          file_size: fileData.fileSize
+        };
       }
   
+      console.log("Adding new message to chat:", newMessage);
       setMessages(previousMessages =>
         GiftedChat.append(previousMessages, [newMessage])
       );
   
+      console.log("Sending message to server...");
       const response = await sendMessage({
         receiverId: receiverId,
         message_type: type,
@@ -204,6 +230,8 @@ const ChatDetail = () => {
           file_size: fileData.fileSize
         }
       });
+      
+      console.log("Server response:", response?.data);
       
       // If this is a new conversation, get the conversation ID and update route params
       if (isNewConversation && response?.data?.status === 'success' && response.data.data.conversation_id) {
@@ -220,6 +248,7 @@ const ChatDetail = () => {
   
     } catch (error) {
       console.error('Error uploading file:', error);
+      Alert.alert('Error', 'Failed to upload file: ' + (error.message || 'Unknown error'));
     }
   };
   
@@ -266,11 +295,12 @@ const ChatDetail = () => {
   // Update handleReceiveMessage to handle image messages
   // Move handleReceiveMessage outside of useEffect
   // Update handleReceiveMessage to properly check conversation ID and log received messages
+  // Update handleReceiveMessage to filter out deleted messages
   const handleReceiveMessage = (newMessage) => {
     fetchMessages();
     
-    // Check if this message belongs to the current conversation
-    if (newMessage.conversation_id === conversationId) {
+    // Check if this message belongs to the current conversation and is not deleted
+    if (newMessage.conversation_id === conversationId && !deletedMessageIds.includes(newMessage._id)) {
       const formattedMessage = {
         _id: newMessage._id || Date.now().toString(),
         createdAt: new Date(newMessage.timestamp),
@@ -365,78 +395,6 @@ const ChatDetail = () => {
   }, [conversationId, receiverId]);
   
 
-  // const onSend = useCallback(async (newMessages = []) => {
-  //   const messageText = newMessages[0].text;
-  //   const tempId = newMessages[0]._id;
-  
-  //   try {
-  //     setMessages(previousMessages =>
-  //       GiftedChat.append(previousMessages, newMessages)
-  //     );
-  
-  //     // Gửi message lên server và nhận về ID thật
-  //     const response = await sendMessage({
-  //       receiverId: receiverId,
-  //       message_type: 'text',
-  //       content: messageText,
-  //       file_id: null
-  //     });
-  
-  //     if (response?.data?.status === 'success') {
-  //       const serverMessageId = response.data.data._id;
-  
-  //       // Cập nhật lại _id của tin nhắn đã gửi
-  //       setMessages(prevMessages =>
-  //         prevMessages.map(msg =>
-  //           msg._id === tempId ? { ...msg, _id: serverMessageId } : msg
-  //         )
-  //       );
-  //     }
-  //   } catch (error) {
-  //     console.error('Error sending message:', error);
-  //   }
-  // }, [receiverId, conversationId, user._id]);
-  
-
-  // const renderInputToolbar = (props) => {
-  //   return (
-  //     <View style={styles.inputContainer}>
-  //       <TouchableOpacity style={styles.optionButton} onPress={() => setIsShowOptions(!isShowOptions)}>
-  //         <Ionicons name="add-circle-outline" size={24} color="#0084ff" />
-  //       </TouchableOpacity>
-        
-  //       <TouchableOpacity style={styles.optionButton}>
-  //         <Ionicons name="camera-outline" size={24} color="#0084ff" />
-  //       </TouchableOpacity>
-        
-  //       <TouchableOpacity style={styles.optionButton}>
-  //         <Ionicons name="image-outline" size={24} color="#0084ff" />
-  //       </TouchableOpacity>
-        
-  //       <TouchableOpacity style={styles.optionButton}>
-  //         <Ionicons name="mic-outline" size={24} color="#0084ff" />
-  //       </TouchableOpacity>
-
-  //       <InputToolbar
-  //         {...props}
-  //         containerStyle={styles.inputToolbar}
-  //         renderComposer={(composerProps) => (
-  //           <Composer
-  //             {...composerProps}
-  //             textInputStyle={styles.composer}
-  //             placeholder="Tin nhắn"
-  //           />
-  //         )}
-  //         renderSend={(sendProps) => (
-  //           <Send {...sendProps} containerStyle={styles.sendContainer}>
-  //             <Ionicons name="send" size={24} color="#0084ff" />
-  //           </Send>
-  //         )}
-  //       />
-  //     </View>
-  //   );
-  // };
-
   // Add these functions before the return statement, after onSend
   const handleImagePick = async () => {
     try {
@@ -455,65 +413,6 @@ const ChatDetail = () => {
   };
   
 
-  const handleDocumentPick = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        copyToCacheDirectory: true,
-        multiple: false
-      });
-      
-      if (result.type === 'success') {
-        setIsShowOptions(false);
-        await handleFileUpload(result.uri, 'file');
-      }
-    } catch (error) {
-      console.error('Error picking document:', error);
-    }
-  };
-  
-  
-  // const handleFileUpload = async (uri, type) => {
-  //   try {
-  //     const fileData = await uploadFileToS3(uri);
-      
-  //     const newMessage = {
-  //       _id: Date.now().toString(),
-  //       createdAt: new Date(),
-  //       user: {
-  //         _id: user._id,
-  //         name: user.name,
-  //         avatar: user.avatar
-  //       }
-  //     };
-  
-  //     if (type === 'image') {
-  //       newMessage.image = fileData.url;
-  //     } else {
-  //       newMessage.text = fileData.fileName;
-  //       newMessage.file = fileData;
-  //     }
-  
-  //     setMessages(previousMessages =>
-  //       GiftedChat.append(previousMessages, [newMessage])
-  //     );
-  
-  //     await sendMessage({
-  //       receiverId: receiverId,
-  //       message_type: type,
-  //       content: fileData.url,
-  //       file_meta: {
-  //         url: fileData.url,
-  //         file_type: fileData.fileType,
-  //         file_name: fileData.fileName,
-  //         file_size: fileData.fileSize
-  //       }
-  //     });
-  
-  //   } catch (error) {
-  //     console.error('Error uploading file:', error);
-  //   }
-  // };
   
   // Add this state for tracking long-pressed message
   const [selectedMessage, setSelectedMessage] = useState(null);
@@ -545,17 +444,45 @@ const ChatDetail = () => {
   };
   
   // Add function to handle message long press
+  // Add state to track locally deleted messages
+  const [deletedMessageIds, setDeletedMessageIds] = useState([]);
+  
+  // Update onLongPress to handle both your messages and other person's messages
   const onLongPress = (context, message) => {
     // Only allow revocation for user's own messages
     if (message.user._id === user._id) {
       setSelectedMessage(message);
       Alert.alert(
-        "Bạn muốn thu hồi tin nhắn?",
+        "Tùy chọn tin nhắn",
         "Chọn chức năng",
         [
           {
             text: "Thu hồi tin nhắn",
             onPress: () => handleRevokeMessage(message._id),
+          },
+          {
+            text: "Xóa tin nhắn",
+            onPress: () => handleDeleteLocalMessage(message._id),
+            style: "destructive"
+          },
+          {
+            text: "Hủy",
+            style: "cancel",
+          },
+        ],
+        { cancelable: true }
+      );
+    } else {
+      // Other person's message
+      setSelectedMessage(message);
+      Alert.alert(
+        "Tùy chọn tin nhắn",
+        "Chọn chức năng",
+        [
+          {
+            text: "Xóa tin nhắn",
+            onPress: () => handleDeleteLocalMessage(message._id),
+            style: "destructive"
           },
           {
             text: "Hủy",
@@ -597,6 +524,15 @@ const ChatDetail = () => {
     }
   };
 
+  // Add helper function to format file size
+  const formatFileSize = (bytes) => {
+    if (!bytes || isNaN(bytes)) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
   // Add renderBubble function to customize message appearance
   const renderBubble = (props) => {
     const { currentMessage } = props;
@@ -635,24 +571,118 @@ const ChatDetail = () => {
         </View>
       );
     }
+     
+    // Nếu là file
+    if (currentMessage.file) {
+      return (
+        <View style={styles.fileBubble}>
+          <TouchableOpacity 
+            style={styles.fileContainer}
+            onPress={() => handleFileOpen(currentMessage.file.url)}
+          >
+            <View style={styles.fileIconContainer}>
+              <Ionicons name="document-text" size={30} color="#fff" />
+            </View>
+            <View style={styles.fileInfo}>
+              <Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">
+                {currentMessage.file.file_name}
+              </Text>
+              <Text style={styles.fileSize}>
+                {formatFileSize(currentMessage.file.file_size)}
+              </Text>
+            </View>
+            <Ionicons name="download-outline" size={24} color="#0084ff" />
+          </TouchableOpacity>
+        </View>
+      );
+    }
   
     return <Bubble {...props} />;
+  };
+  const handleFileOpen = async (url) => {
+    try {
+      // Open file in browser or with a file viewer
+      const supported = await Linking.canOpenURL(url);
+      
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Error', 'Cannot open this file');
+      }
+    } catch (error) {
+      console.error('Error opening file:', error);
+      Alert.alert('Error', 'Failed to open file');
+    }
+  };
+  const handleDocumentPick = async () => {
+    try {
+      // For newer Expo versions
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        multiple: false
+      });
+      
+      console.log("Document picker result:", JSON.stringify(result, null, 2));
+      
+      if (result.canceled === false && result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        setIsShowOptions(false);
+        
+        // Show loading indicator
+        Alert.alert('Uploading', 'File is being uploaded...');
+        
+        await handleFileUpload(file.uri, 'file', {
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.mimeType
+        });
+      }
+    } catch (error) {
+      console.error('Error picking document:', error);
+      Alert.alert('Error', 'Failed to select file: ' + error.message);
+    }
+  };
+  const handleDeleteLocalMessage = (messageId) => {
+    // Add to deleted messages list
+    setDeletedMessageIds(prev => [...prev, messageId]);
+    
+    // Remove from current messages
+    setMessages(prevMessages => 
+      prevMessages.filter(msg => msg._id !== messageId)
+    );
+    
+    // Optionally store deleted IDs in AsyncStorage to persist across app restarts
+    storeDeletedMessageIds([...deletedMessageIds, messageId]);
+  };
+  
+  // Add function to store deleted message IDs
+  const storeDeletedMessageIds = async (ids) => {
+    try {
+      const key = `deleted_messages_${conversationId}_${user._id}`;
+      await AsyncStorage.setItem(key, JSON.stringify(ids));
+    } catch (error) {
+      console.error('Error storing deleted message IDs:', error);
+    }
+  };
+  
+  // Add function to load deleted message IDs
+  const loadDeletedMessageIds = async () => {
+    try {
+      const key = `deleted_messages_${conversationId}_${user._id}`;
+      const storedIds = await AsyncStorage.getItem(key);
+      if (storedIds) {
+        setDeletedMessageIds(JSON.parse(storedIds));
+      }
+    } catch (error) {
+      console.error('Error loading deleted message IDs:', error);
+    }
   };
 
   // In the return statement, update GiftedChat component
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-      {/* <Video
-  source={{ uri: 'https://bucket-zele.s3.ap-southeast-2.amazonaws.com/images/f047ab1c-8fe7-423f-9ea2-282e910efb0e.mov' }}
-  rate={1.0}
-  volume={1.0}
-  isMuted={false}
-  resizeMode="contain"
-  useNativeControls
-  shouldPlay
-  style={{ width: 300, height: 200 }}
-/> */}
+     
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
@@ -873,6 +903,42 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     marginTop: 5,
     marginRight: 5,
+  },
+  fileBubble: {
+    padding: 5,
+    maxWidth: 280,
+    borderRadius: 15,
+    marginBottom: 10,
+  },
+  fileContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    borderRadius: 10,
+    padding: 10,
+  },
+  fileIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#0084ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  fileInfo: {
+    flex: 1,
+    marginRight: 10,
+  },
+  fileName: {
+    fontWeight: '500',
+    fontSize: 14,
+    color: '#333',
+  },
+  fileSize: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
   },
 });
 
