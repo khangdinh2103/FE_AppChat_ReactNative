@@ -1,6 +1,6 @@
 // Move all imports to the top
 import React, {useRef, useState, useCallback, useEffect, useContext } from "react";
-import { View, Text, Image, StyleSheet, TouchableOpacity, TextInput, Platform, Alert , Linking, Clipboard} from "react-native";
+import { View, Text, Image, StyleSheet, TouchableOpacity, TextInput, Platform, Alert, Linking } from "react-native";
 import { GiftedChat, InputToolbar, Composer, Send, Bubble } from "react-native-gifted-chat";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { useRoute, useNavigation } from "@react-navigation/native";
@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { uploadFileToS3 } from '../../services/s3Service';
 import { Video } from 'expo-av';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const ChatDetail = () => {
   const route = useRoute();
@@ -22,6 +23,7 @@ const ChatDetail = () => {
   const socketRef = useRef(null);
   const [isShowOptions, setIsShowOptions] = useState(false);
   const [isNewConversation, setIsNewConversation] = useState(false);
+  
   
   // In useEffect for socket setup
   useEffect(() => {
@@ -71,48 +73,36 @@ const ChatDetail = () => {
               }
             };
   
-            // Handle different message types
-            // Handle different message types
-            switch (msg.message_type) {
-              case 'image':
-                baseMessage.image = msg.content;
-                baseMessage.messageType = 'image';
-                break;
-              case 'video':
-                baseMessage.video = msg.content;
-                baseMessage.messageType = 'video';
-                break;
-              case 'file':
-                // Properly format file messages to ensure they're clickable
-                baseMessage.text = msg.file_meta?.file_name || 'File';
-                const fileUrl = msg.content || msg.file_meta?.url;
-                baseMessage.file = {
-                  url: fileUrl,
-                  fileName: msg.file_meta?.file_name || 'File',
-                  file_name: msg.file_meta?.file_name || 'File', // For compatibility
-                  fileType: msg.file_meta?.file_type || 'application/octet-stream',
-                  fileSize: msg.file_meta?.file_size || 0
-                };
-                // Log for debugging
-                console.log('File message:', {
-                  id: msg._id,
-                  url: fileUrl,
-                  fileName: msg.file_meta?.file_name
-                });
-                baseMessage.messageType = 'file';
-                break;
-              default:
-                baseMessage.text = msg.content;
-                baseMessage.messageType = 'text';
-            }
-
-            if (msg.revoked) {
-              baseMessage.revoked = true;
+            // Check if message is revoked
+            if (msg.is_revoked) {
               baseMessage.text = "Tin nhắn đã được thu hồi";
+              baseMessage.revoked = true;
+            } 
+            // Handle different message types for non-revoked messages
+            else if (msg.message_type === 'image') {
+              baseMessage.image = msg.content;
+            } else if (msg.message_type === 'video') {
+              baseMessage.video = msg.content;
+            } else if (msg.message_type === 'file') {
+              baseMessage.text = msg.file_meta?.file_name || 'File';
+            baseMessage.file = {
+              url: msg.file_meta?.url || msg.content, // Đảm bảo url là link bucket
+              file_name: msg.file_meta?.file_name || 'Unknown',
+              file_type: msg.file_meta?.file_type || 'application/octet-stream',
+              file_size: msg.file_meta?.file_size || 0,
+            };
+            } else {
+              baseMessage.text = msg.content;
             }
+  
             return baseMessage;
           });
-        setMessages(formattedMessages);
+        // Filter out locally deleted messages
+        const filteredMessages = formattedMessages.filter(
+          msg => !deletedMessageIds.includes(msg._id)
+        );
+        
+        setMessages(filteredMessages);
       }
     } catch (error) {
       console.error('Error details:', error.response?.data || error.message);
@@ -121,6 +111,11 @@ const ChatDetail = () => {
     }
   };
 
+  useEffect(() => {
+    if (conversationId) {
+      loadDeletedMessageIds();
+    }
+  }, [conversationId]);
   // Update onSend to handle new conversations
   const onSend = useCallback(async (newMessages = []) => {
     const messageText = newMessages[0].text;
@@ -186,10 +181,18 @@ const ChatDetail = () => {
     }
   };
   
-  
-  const handleFileUpload = async (uri, type, fileName = null) => {
+  // Update handleFileUpload to handle videos
+  // Update handleFileUpload to handle files with metadata
+  const handleFileUpload = async (uri, type, fileMetadata = null) => {
+    console.log("Uploading:", type, uri, fileMetadata);
     try {
-      const fileData = await uploadFileToS3(uri);
+      // Check if uri is valid
+      if (!uri) {
+        throw new Error('Invalid file URI');
+      }
+      
+      const fileData = await uploadFileToS3(uri, fileMetadata);
+      console.log("File uploaded successfully:", fileData);
       
       const newMessage = {
         _id: Date.now().toString(),
@@ -206,70 +209,54 @@ const ChatDetail = () => {
       } else if (type === 'video') {
         newMessage.video = fileData.url;
       } else if (type === 'file') {
-        // For file messages, set both text and file properties
-        newMessage.text = fileName || fileData.fileName || 'File';
+        newMessage.text = fileData.fileName || 'File';
         newMessage.file = {
           url: fileData.url,
-          fileName: fileName || fileData.fileName || 'File',
-          fileType: fileData.fileType,
-          fileSize: fileData.fileSize
+          file_name: fileData.fileName,
+          file_type: fileData.fileType,
+          file_size: fileData.fileSize
         };
       }
   
+      console.log("Adding new message to chat:", newMessage);
       setMessages(previousMessages =>
         GiftedChat.append(previousMessages, [newMessage])
       );
   
+      console.log("Sending message to server...");
       const response = await sendMessage({
         receiverId: receiverId,
         message_type: type,
-        content: type === 'file' ? newMessage.text : fileData.url,
+        content: fileData.url,
         file_meta: {
           url: fileData.url,
           file_type: fileData.fileType,
-          file_name: fileName || fileData.fileName || 'File',
+          file_name: fileData.fileName,
           file_size: fileData.fileSize
         }
       });
       
-      // Handle new conversation creation
+      console.log("Server response:", response?.data);
+      
+      // If this is a new conversation, get the conversation ID and update route params
       if (isNewConversation && response?.data?.status === 'success' && response.data.data.conversation_id) {
         const newConversationId = response.data.data.conversation_id;
-        navigation.setParams({ conversationId: newConversationId });
+        
+        // Update navigation params
+        navigation.setParams({
+          conversationId: newConversationId
+        });
+        
+        // No longer a new conversation
         setIsNewConversation(false);
       }
   
     } catch (error) {
       console.error('Error uploading file:', error);
-      Alert.alert('Error', 'Failed to upload file');
+      Alert.alert('Error', 'Failed to upload file: ' + (error.message || 'Unknown error'));
     }
   };
   
-
-  const renderMessageText = (props) => {
-    const { currentMessage } = props;
-    
-    if (currentMessage.file) {
-      return (
-        <View style={styles.fileContainer}>
-          <Ionicons name="document-outline" size={24} color="#0084ff" style={styles.fileIcon} />
-          <View style={styles.fileDetails}>
-            <Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">
-              {currentMessage.file.fileName || 'File'}
-            </Text>
-            <TouchableOpacity 
-              style={styles.downloadButton}
-              onPress={() => Linking.openURL(currentMessage.file.url)}
-            >
-              <Text style={styles.downloadText}>Mở</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      );
-    }
-    
-    return null;
-  };
   // Update renderInputToolbar to include video button
   const renderInputToolbar = (props) => {
     return (
@@ -310,6 +297,109 @@ const ChatDetail = () => {
     );
   };
 
+  // Update handleReceiveMessage to handle image messages
+  // Move handleReceiveMessage outside of useEffect
+  // Update handleReceiveMessage to properly check conversation ID and log received messages
+  // Update handleReceiveMessage to filter out deleted messages
+  const handleReceiveMessage = (newMessage) => {
+    fetchMessages();
+    
+    // Check if this message belongs to the current conversation and is not deleted
+    if (newMessage.conversation_id === conversationId && !deletedMessageIds.includes(newMessage._id)) {
+      const formattedMessage = {
+        _id: newMessage._id || Date.now().toString(),
+        createdAt: new Date(newMessage.timestamp),
+        user: {
+          _id: newMessage.sender_id,
+          name: name,
+          avatar: avatar
+        }
+      };
+  
+      // ✅ Nếu là tin nhắn đã thu hồi
+      if (newMessage.is_revoked) {
+        formattedMessage.text = "Tin nhắn đã được thu hồi";
+        formattedMessage.revoked = true;
+      }
+      // ✅ Nếu chưa thu hồi thì xử lý theo loại
+      else if (newMessage.message_type === 'image') {
+        formattedMessage.image = newMessage.content;
+      } else if (newMessage.message_type === 'video') {
+        formattedMessage.video = newMessage.content;
+      } else if (newMessage.message_type === 'file') {
+        formattedMessage.text = newMessage.file_meta?.file_name || newMessage.content;
+        formattedMessage.file = newMessage.file_meta;
+      } else {
+        formattedMessage.text = newMessage.content;
+      }
+  
+      console.log('Adding formatted message to chat:', formattedMessage);
+      
+      // Use a function to update state to ensure we're working with the latest state
+      setMessages(prevMessages => {
+        // Check if message already exists to avoid duplicates
+        const messageExists = prevMessages.some(msg => msg._id === formattedMessage._id);
+        if (messageExists) {
+          return prevMessages;
+        }
+        return GiftedChat.append(prevMessages, [formattedMessage]);
+      });
+    }
+  };
+  
+  
+  // Update the socket setup useEffect to properly handle socket connection
+  useEffect(() => {
+    console.log('Setting up socket connection...');
+    
+    const setupSocket = async () => {
+      const socketInstance = await initializeSocket();
+      socketRef.current = socketInstance;
+  
+      if (socketInstance) {
+        console.log('Socket connected successfully');
+        
+        // Remove any existing listeners to avoid duplicates
+        socketInstance.off('receiveMessage');
+        
+        // Add the new listener
+        socketInstance.on('receiveMessage', handleReceiveMessage);
+      }
+    };
+  
+    setupSocket();
+    
+    // Check if conversationId exists - if not, it's a new conversation
+    if (conversationId) {
+      fetchMessages();
+    } else {
+      setIsNewConversation(true);
+      setLoading(false);
+    }
+  
+    return () => {
+      if (socketRef.current) {
+        console.log('Cleaning up socket connection...');
+        socketRef.current.off('receiveMessage');
+        // Remove this line: socketRef.current.disconnect();
+      }
+    };
+  }, [conversationId]);
+  
+  // Update the message subscription useEffect to properly handle message updates
+  useEffect(() => {
+    console.log('Setting up message subscription...');
+    subscribeToMessages(handleReceiveMessage);
+  
+    return () => {
+      console.log('Cleaning up message subscription...');
+      if (socketRef.current) {
+        socketRef.current.off('receiveMessage', handleReceiveMessage);
+      }
+    };
+  }, [conversationId, receiverId]);
+  
+
   // Add these functions before the return statement, after onSend
   const handleImagePick = async () => {
     try {
@@ -328,70 +418,6 @@ const ChatDetail = () => {
   };
   
 
-  const handleDocumentPick = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        copyToCacheDirectory: true,
-        multiple: false
-      });
-      
-      if (!result.canceled && result.assets && result.assets[0]) {
-        setIsShowOptions(false);
-        await handleFileUpload(result.assets[0].uri, 'file', result.assets[0].name);
-      } else if (result.type === 'success') {
-        // For older Expo DocumentPicker API
-        setIsShowOptions(false);
-        await handleFileUpload(result.uri, 'file', result.name);
-      }
-    } catch (error) {
-      console.error('Error picking document:', error);
-      Alert.alert('Error', 'Failed to pick document');
-    }
-  };
-  
-  
-  // const handleFileUpload = async (uri, type) => {
-  //   try {
-  //     const fileData = await uploadFileToS3(uri);
-      
-  //     const newMessage = {
-  //       _id: Date.now().toString(),
-  //       createdAt: new Date(),
-  //       user: {
-  //         _id: user._id,
-  //         name: user.name,
-  //         avatar: user.avatar
-  //       }
-  //     };
-  
-  //     if (type === 'image') {
-  //       newMessage.image = fileData.url;
-  //     } else {
-  //       newMessage.text = fileData.fileName;
-  //       newMessage.file = fileData;
-  //     }
-  
-  //     setMessages(previousMessages =>
-  //       GiftedChat.append(previousMessages, [newMessage])
-  //     );
-  
-  //     await sendMessage({
-  //       receiverId: receiverId,
-  //       message_type: type,
-  //       content: fileData.url,
-  //       file_meta: {
-  //         url: fileData.url,
-  //         file_type: fileData.fileType,
-  //         file_name: fileData.fileName,
-  //         file_size: fileData.fileSize
-  //       }
-  //     });
-  
-  //   } catch (error) {
-  //     console.error('Error uploading file:', error);
-  //   }
-  // };
   
   // Add this state for tracking long-pressed message
   const [selectedMessage, setSelectedMessage] = useState(null);
@@ -423,17 +449,45 @@ const ChatDetail = () => {
   };
   
   // Add function to handle message long press
+  // Add state to track locally deleted messages
+  const [deletedMessageIds, setDeletedMessageIds] = useState([]);
+  
+  // Update onLongPress to handle both your messages and other person's messages
   const onLongPress = (context, message) => {
     // Only allow revocation for user's own messages
     if (message.user._id === user._id) {
       setSelectedMessage(message);
       Alert.alert(
-        "Bạn muốn thu hồi tin nhắn?",
+        "Tùy chọn tin nhắn",
         "Chọn chức năng",
         [
           {
             text: "Thu hồi tin nhắn",
             onPress: () => handleRevokeMessage(message._id),
+          },
+          {
+            text: "Xóa tin nhắn",
+            onPress: () => handleDeleteLocalMessage(message._id),
+            style: "destructive"
+          },
+          {
+            text: "Hủy",
+            style: "cancel",
+          },
+        ],
+        { cancelable: true }
+      );
+    } else {
+      // Other person's message
+      setSelectedMessage(message);
+      Alert.alert(
+        "Tùy chọn tin nhắn",
+        "Chọn chức năng",
+        [
+          {
+            text: "Xóa tin nhắn",
+            onPress: () => handleDeleteLocalMessage(message._id),
+            style: "destructive"
           },
           {
             text: "Hủy",
@@ -475,223 +529,195 @@ const ChatDetail = () => {
     }
   };
 
-  
+  // Add helper function to format file size
+  const formatFileSize = (bytes) => {
+    if (!bytes || isNaN(bytes)) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
 
+  // Add renderBubble function to customize message appearance
   const renderBubble = (props) => {
-    const { currentMessage, position } = props;
+    const { currentMessage } = props;
   
     // Nếu tin nhắn bị thu hồi
     if (currentMessage.revoked) {
       return (
-        <View style={[
-          styles.revokedContainer,
-          position === 'right' ? styles.revokedContainerRight : styles.revokedContainerLeft
-        ]}>
-          <Ionicons 
-            name="refresh-circle-outline" 
-            size={16} 
-            color="#888" 
-            style={styles.revokedIcon} 
-          />
-          <Text style={styles.revokedText}>Tin nhắn đã được thu hồi</Text>
-        </View>
-      );
-    }
-  
-    // Nếu là video
-    if (currentMessage.video) {
-      return (
-        <View style={[
-          styles.mediaBubble,
-          position === 'right' ? styles.mediaBubbleRight : styles.mediaBubbleLeft
-        ]}>
-          <Video
-            source={{ uri: currentMessage.video }}
-            loop={false}
-            autoPlay={false}
-            controls
-            rate={1.0}
-            volume={1.0}
-            isMuted={false}
-            resizeMode="cover"
-            shouldPlay={false}
-            useNativeControls
-            style={styles.videoContent}
-          />
-          <Text style={[
-            styles.mediaTimestamp,
-            position === 'right' ? styles.mediaTimestampRight : styles.mediaTimestampLeft
-          ]}>
-            {new Date(currentMessage.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-          </Text>
-        </View>
-      );
-    }
-    
-    // Nếu là hình ảnh
-    if (currentMessage.image) {
-      return (
-        <View style={[
-          styles.mediaBubble,
-          position === 'right' ? styles.mediaBubbleRight : styles.mediaBubbleLeft
-        ]}>
-          <Image 
-            source={{ uri: currentMessage.image }} 
-            style={styles.imageContent}
-            resizeMode="cover"
-          />
-          <Text style={[
-            styles.mediaTimestamp,
-            position === 'right' ? styles.mediaTimestampRight : styles.mediaTimestampLeft
-          ]}>
-            {new Date(currentMessage.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-          </Text>
-        </View>
-      );
-    }
-    
+        <Bubble
+          {...props}
+          wrapperStyle={{
+            right: { backgroundColor: '#ccc' },
+            left: { backgroundColor: '#ccc' }
 
-    
-    // Nếu là file
-    // Nếu là file
-// Nếu là file
-// Nếu là file
-if (currentMessage.file) {
-  // Log for debugging
-  console.log('Rendering file bubble:', {
-    fileName: currentMessage.file.file_name || currentMessage.file.fileName,
-    url: currentMessage.file.url
-  });
-  
-  return (
-    <View style={[
-      styles.fileBubble,
-      position === 'right' ? styles.fileBubbleRight : styles.fileBubbleLeft
-    ]}>
-      <View style={styles.fileContainer}>
-        <Ionicons 
-          name="document-outline" 
-          size={24} 
-          color={position === 'right' ? "#fff" : "#0084ff"} 
-          style={styles.fileIcon} 
+          }}
         />
-        <View style={styles.fileDetails}>
-          <Text 
-            style={[
-              styles.fileName, 
-              position === 'right' ? styles.fileNameRight : styles.fileNameLeft
-            ]} 
-            numberOfLines={1} 
-            ellipsizeMode="middle"
-          >
-            {currentMessage.file.file_name || currentMessage.file.fileName || 'File'}
-          </Text>
-          <TouchableOpacity 
-            style={[
-              styles.downloadButton,
-              position === 'right' ? styles.downloadButtonRight : styles.downloadButtonLeft
-            ]}
-            onPress={() => {
-              // Lấy URL đầy đủ từ message
-              let fileUrl = currentMessage.file.url;
-              
-              // Kiểm tra xem URL có phải là URL đầy đủ hay không
-              if (!fileUrl) {
-                console.error('Missing file URL');
-                Alert.alert('Lỗi', 'Không tìm thấy đường dẫn file');
-                return;
-              }
-              
-              // Đảm bảo URL là đầy đủ
-              if (!fileUrl.startsWith('http')) {
-                const s3BaseUrl = "https://bucket-zele.s3.ap-southeast-2.amazonaws.com/";
-                fileUrl = s3BaseUrl + fileUrl;
-              }
-              
-              console.log('Opening S3 URL:', fileUrl);
-              
-              // Mở URL trong trình duyệt
-              Linking.canOpenURL(fileUrl)
-                .then(supported => {
-                  if (supported) {
-                    return Linking.openURL(fileUrl);
-                  } else {
-                    console.log('Cannot open URL directly, trying browser');
-                    // Thử mở trong trình duyệt
-                    return Linking.openURL(fileUrl);
-                  }
-                })
-                .then(() => {
-                  console.log('Successfully opened URL');
-                })
-                .catch(err => {
-                  console.error('Error opening URL:', err);
-                  
-                  // Hiển thị thông báo lỗi và các tùy chọn khác
-                  Alert.alert(
-                    'Không thể mở file',
-                    'Bạn muốn thực hiện thao tác nào?',
-                    [
-                      { text: 'Hủy', style: 'cancel' },
-                      { 
-                        text: 'Sao chép link', 
-                        onPress: () => {
-                          Clipboard.setString(fileUrl);
-                          Alert.alert('Thành công', 'Đã sao chép link vào clipboard');
-                        }
-                      },
-                      {
-                        text: 'Mở trong trình duyệt',
-                        onPress: () => {
-                          // Thử mở trong trình duyệt web
-                          const browserUrl = Platform.OS === 'ios' 
-                            ? fileUrl 
-                            : fileUrl;
-                          Linking.openURL(browserUrl).catch(e => {
-                            console.error('Final attempt failed:', e);
-                            Alert.alert('Lỗi', 'Không thể mở file bằng bất kỳ cách nào');
-                          });
-                        }
-                      }
-                    ]
-                  );
-                });
-            }}
-          >
-            <Text style={[
-              styles.downloadText,
-              position === 'right' ? styles.downloadTextRight : styles.downloadTextLeft
-            ]}>Mở</Text>
-          </TouchableOpacity>
-        </View>
+      );
+    }
+  
+    // Nếu là hình ảnh
+  if (currentMessage.image) {
+    return (
+      <View
+        style={[
+          styles.mediaBubble,
+          currentMessage.user._id === user._id ? styles.mediaBubbleRight : styles.mediaBubbleLeft,
+        ]}
+      >
+        <TouchableOpacity onPress={() => handleFileOpen(currentMessage.image)}>
+          <Image
+            source={{ uri: currentMessage.image }}
+            style={styles.media}
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
       </View>
-      <Text style={[
-        styles.mediaTimestamp,
-        position === 'right' ? styles.mediaTimestampRight : styles.mediaTimestampLeft
-      ]}>
-        {new Date(currentMessage.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-      </Text>
-    </View>
-  );
-}
-    
-    // Default bubble for text messages
+    );
+  }
+
+  // Nếu là video
+  if (currentMessage.video) {
+    return (
+      <View style={{ padding: 10 }}>
+        <Video
+          source={{ uri: currentMessage.video }}
+          loop={false}
+          autoPlay={false}
+          controls
+          rate={1.0}
+          volume={1.0}
+          isMuted={false}
+          resizeMode="contain"
+          shouldPlay={false}
+          useNativeControls
+          style={{ width: 180, height: 180, borderRadius: 10 }}
+        />
+      </View>
+    );
+  }
+
+  // Nếu là file
+  if (currentMessage.file) {
+    return (
+      <View style={styles.fileBubble}>
+        <TouchableOpacity
+          style={styles.fileContainer}
+          onPress={() => handleFileOpen(currentMessage.file.url)}
+        >
+          <View style={styles.fileIconContainer}>
+            <Ionicons name="document-text" size={30} color="#fff" />
+          </View>
+          <View style={styles.fileInfo}>
+            <Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">
+              {currentMessage.file.file_name}
+            </Text>
+            <Text style={styles.fileSize}>
+              {formatFileSize(currentMessage.file.file_size)}
+            </Text>
+          </View>
+          <Ionicons name="open-outline" size={24} color="#0084ff" />
+        </TouchableOpacity>
+      </View>
+    );
+  }
+  
     return (
       <Bubble
         {...props}
         wrapperStyle={{
           right: { backgroundColor: '#0084ff' },
-          left: { backgroundColor: '#f0f0f0' }
+          left: { backgroundColor: '#f0f0f0' },
         }}
-        onLongPress={() => onLongPress(props, currentMessage)}
+        textStyle={{
+          right: { color: '#fff' },
+          left: { color: '#333' },
+        }}
       />
     );
   };
+  const handleFileOpen = async (url) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Lỗi', 'Không thể mở nội dung này');
+      }
+    } catch (error) {
+      console.error('Error opening file:', error);
+      Alert.alert('Lỗi', 'Không thể mở nội dung: ' + error.message);
+    }
+  };
+  const handleDocumentPick = async () => {
+    try {
+      // For newer Expo versions
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        multiple: false
+      });
+      
+      console.log("Document picker result:", JSON.stringify(result, null, 2));
+      
+      if (result.canceled === false && result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        setIsShowOptions(false);
+        
+        // Show loading indicator
+        Alert.alert('Uploading', 'File is being uploaded...');
+        
+        await handleFileUpload(file.uri, 'file', {
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.mimeType
+        });
+      }
+    } catch (error) {
+      console.error('Error picking document:', error);
+      Alert.alert('Error', 'Failed to select file: ' + error.message);
+    }
+  };
+  const handleDeleteLocalMessage = (messageId) => {
+    // Add to deleted messages list
+    setDeletedMessageIds(prev => [...prev, messageId]);
+    
+    // Remove from current messages
+    setMessages(prevMessages => 
+      prevMessages.filter(msg => msg._id !== messageId)
+    );
+    
+    // Optionally store deleted IDs in AsyncStorage to persist across app restarts
+    storeDeletedMessageIds([...deletedMessageIds, messageId]);
+  };
+  
+  // Add function to store deleted message IDs
+  const storeDeletedMessageIds = async (ids) => {
+    try {
+      const key = `deleted_messages_${conversationId}_${user._id}`;
+      await AsyncStorage.setItem(key, JSON.stringify(ids));
+    } catch (error) {
+      console.error('Error storing deleted message IDs:', error);
+    }
+  };
+  
+  // Add function to load deleted message IDs
+  const loadDeletedMessageIds = async () => {
+    try {
+      const key = `deleted_messages_${conversationId}_${user._id}`;
+      const storedIds = await AsyncStorage.getItem(key);
+      if (storedIds) {
+        setDeletedMessageIds(JSON.parse(storedIds));
+      }
+    } catch (error) {
+      console.error('Error loading deleted message IDs:', error);
+    }
+  };
+
   // In the return statement, update GiftedChat component
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-      {}
+     
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
@@ -776,13 +802,13 @@ if (currentMessage.file) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: '#fff',
   },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 12,
-    backgroundColor: "#fff",
+    backgroundColor: '#fff',
     marginTop: Platform.OS === 'ios' ? 40 : 10,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
@@ -810,11 +836,11 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   headerName: {
-    fontWeight: "600",
+    fontWeight: '600',
     fontSize: 16,
   },
   headerStatus: {
-    color: "#8E8E93",
+    color: '#8E8E93',
     fontSize: 12,
   },
   headerActions: {
@@ -885,165 +911,71 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
   },
-  video: {
-    width: 200,
-    height: 150,
-    borderRadius: 13,
-  },
-  videoBubble: {
-    padding: 5,
-    borderRadius: 15,
-    marginBottom: 10,
-    maxWidth: 250,
-  },
-  videoBubbleRight: {
-    backgroundColor: '#0084ff',
-    marginLeft: 60,
-    alignSelf: 'flex-end',
-  },
-  videoBubbleLeft: {
-    backgroundColor: '#f1f0f0',
-    marginRight: 60,
-    alignSelf: 'flex-start',
-  },
-  videoTimestamp: {
-    fontSize: 10,
-    color: '#fff',
-    alignSelf: 'flex-end',
-    marginTop: 5,
-    marginRight: 5,
-  },
-  // Media styles (for both images and videos)
+  // Style cho hình ảnh và video
   mediaBubble: {
-    borderRadius: 15,
+    marginVertical: 5,
+    marginHorizontal: 10,
+    borderRadius: 12,
     overflow: 'hidden',
-    marginBottom: 10,
-    width: 180,  // Reduced from 220
-    maxWidth: 180, // Reduced from 220
+    elevation: 2, // Bóng cho Android
+    shadowColor: '#000', // Bóng cho iOS
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
   },
   mediaBubbleRight: {
-    marginLeft: 60,
     alignSelf: 'flex-end',
-    backgroundColor: '#0084ff',
+    backgroundColor: '#0084ff', // Màu nền cho người gửi
   },
   mediaBubbleLeft: {
-    marginRight: 60,
     alignSelf: 'flex-start',
-    backgroundColor: '#f1f0f0',
+    backgroundColor: '#f0f0f0', // Màu nền cho người nhận
   },
-  imageContent: {
-    width: 180,  // Reduced from 220
-    height: 180,  // Reduced from 220
-    borderTopLeftRadius: 15,
-    borderTopRightRadius: 15,
-  },
-  videoContent: {
-    width: 180,  // Reduced from 220
-    height: 180,  // Reduced from 220
-    borderTopLeftRadius: 15,
-    borderTopRightRadius: 15,
-  },
-  mediaTimestamp: {
-    fontSize: 10,
-    padding: 5,
-    alignSelf: 'flex-end',
-  },
-  mediaTimestampRight: {
-    color: '#fff',
-  },
-  mediaTimestampLeft: {
-    color: '#888',
-  },
-  
-  // Revoked message styles
-  revokedContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderRadius: 15,
-    marginBottom: 5,
-    maxWidth: 250,
-  },
-  revokedContainerRight: {
-    backgroundColor: '#f0f0f0',
-    marginLeft: 60,
-    alignSelf: 'flex-end',
-  },
-  revokedContainerLeft: {
-    backgroundColor: '#f8f8f8',
-    marginRight: 60,
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  revokedIcon: {
-    marginRight: 5,
-  },
-  revokedText: {
-    color: '#888',
-    fontStyle: 'italic',
-    fontSize: 14,
+  media: {
+    width: 150, // Giảm chiều rộng
+    height: 150, // Giảm chiều cao
+    borderRadius: 12,
   },
   fileBubble: {
+    padding: 5,
+    maxWidth: 180,
     borderRadius: 15,
-    padding: 10,
     marginBottom: 10,
-    maxWidth: 250,
-  },
-  fileBubbleRight: {
-    backgroundColor: '#0084ff',
-    marginLeft: 60,
-    alignSelf: 'flex-end',
-  },
-  fileBubbleLeft: {
-    backgroundColor: '#f0f0f0',
-    marginRight: 60,
-    alignSelf: 'flex-start',
   },
   fileContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: 200,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 10,
+    padding: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
   },
-  fileIcon: {
+  fileIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#0084ff',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 10,
   },
-  fileDetails: {
+  fileInfo: {
     flex: 1,
+    marginRight: 10,
   },
   fileName: {
-    fontSize: 14,
     fontWeight: '500',
-    marginBottom: 5,
-    maxWidth: 150,
-  },
-  fileNameRight: {
-    color: '#fff',
-  },
-  fileNameLeft: {
+    fontSize: 14,
     color: '#333',
   },
-  downloadButton: {
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  downloadButtonRight: {
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  downloadButtonLeft: {
-    backgroundColor: 'rgba(0, 132, 255, 0.1)',
-  },
-  downloadText: {
+  fileSize: {
     fontSize: 12,
-    fontWeight: '500',
-  },
-  downloadTextRight: {
-    color: '#fff',
-  },
-  downloadTextLeft: {
-    color: '#0084ff',
+    color: '#666',
+    marginTop: 2,
   },
 });
 
