@@ -29,6 +29,11 @@ export const initializeSocket = async () => {
       console.log('Socket received message:', data);
     });
 
+    // Add message revocation event logging
+    socket.on('messageRevoked', (data) => {
+      console.log('Message revoked:', data);
+    });
+
     return socket;
   } catch (error) {
     console.error('Socket initialization error:', error);
@@ -40,9 +45,19 @@ export const emitMessage = (messageData) => {
   socket.emit('sendMessage', messageData);
 };
 
+export const revokeMessage = (messageId, userId) => {
+  if (!socket) return;
+  socket.emit('revokeMessage', { messageId, userId });
+};
+
 export const subscribeToMessages = (callback) => {
   if (!socket) return;
   socket.on('receiveMessage', callback);
+};
+
+export const subscribeToMessageRevocation = (callback) => {
+  if (!socket) return;
+  socket.on('messageRevoked', callback);
 };
 
 export const subscribeToTyping = (callback) => {
@@ -55,8 +70,4 @@ export const emitTyping = ({ conversation_id, receiver_id, isTyping }) => {
   socket.emit('typing', { conversation_id, receiver_id, isTyping });
 };
 
-// Add the subscribeToMessageRevocation function to socketService.js
-export const subscribeToMessageRevocation = (callback) => {
-  if (!socket) return;
-  socket.on('messageRevoked', callback);
-};
+
