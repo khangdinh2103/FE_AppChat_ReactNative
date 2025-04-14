@@ -1,6 +1,6 @@
 // Move all imports to the top
 import React, {useRef, useState, useCallback, useEffect, useContext } from "react";
-import { View, Text, Image, StyleSheet, TouchableOpacity, TextInput, Platform, Alert } from "react-native";
+import { View, Text, Image, StyleSheet, TouchableOpacity, TextInput, Platform, Alert , Linking, Clipboard} from "react-native";
 import { GiftedChat, InputToolbar, Composer, Send, Bubble } from "react-native-gifted-chat";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { useRoute, useNavigation } from "@react-navigation/native";
@@ -72,30 +72,43 @@ const ChatDetail = () => {
             };
   
             // Handle different message types
-            if (msg.message_type === 'image') {
-              baseMessage.image = msg.content;
-            } else if (msg.message_type === 'file') {
-              baseMessage.text = msg.file_meta?.file_name || msg.content;
-              baseMessage.file = msg.file_meta;
-            } else {
-              switch (msg.message_type) {
-                case 'image':
-                  baseMessage.image = msg.content;
-                  baseMessage.messageType = 'image';
-                  break;
-                case 'video':
-                  baseMessage.video = msg.content;
-                  baseMessage.messageType = 'video';
-                  break;
-                case 'file':
-                  baseMessage.text = msg.file_meta?.file_name || msg.content;
-                  baseMessage.file = msg.file_meta;
-                  baseMessage.messageType = 'file';
-                  break;
-                default:
-                  baseMessage.text = msg.content;
-                  baseMessage.messageType = 'text';
-              }
+            // Handle different message types
+            switch (msg.message_type) {
+              case 'image':
+                baseMessage.image = msg.content;
+                baseMessage.messageType = 'image';
+                break;
+              case 'video':
+                baseMessage.video = msg.content;
+                baseMessage.messageType = 'video';
+                break;
+              case 'file':
+                // Properly format file messages to ensure they're clickable
+                baseMessage.text = msg.file_meta?.file_name || 'File';
+                const fileUrl = msg.content || msg.file_meta?.url;
+                baseMessage.file = {
+                  url: fileUrl,
+                  fileName: msg.file_meta?.file_name || 'File',
+                  file_name: msg.file_meta?.file_name || 'File', // For compatibility
+                  fileType: msg.file_meta?.file_type || 'application/octet-stream',
+                  fileSize: msg.file_meta?.file_size || 0
+                };
+                // Log for debugging
+                console.log('File message:', {
+                  id: msg._id,
+                  url: fileUrl,
+                  fileName: msg.file_meta?.file_name
+                });
+                baseMessage.messageType = 'file';
+                break;
+              default:
+                baseMessage.text = msg.content;
+                baseMessage.messageType = 'text';
+            }
+
+            if (msg.revoked) {
+              baseMessage.revoked = true;
+              baseMessage.text = "Tin nhắn đã được thu hồi";
             }
             return baseMessage;
           });
@@ -173,9 +186,8 @@ const ChatDetail = () => {
     }
   };
   
-  // Update handleFileUpload to handle videos
-  const handleFileUpload = async (uri, type) => {
-    console.log("type:", type);
+  
+  const handleFileUpload = async (uri, type, fileName = null) => {
     try {
       const fileData = await uploadFileToS3(uri);
       
@@ -193,9 +205,15 @@ const ChatDetail = () => {
         newMessage.image = fileData.url;
       } else if (type === 'video') {
         newMessage.video = fileData.url;
-      } else {
-        newMessage.text = fileData.fileName;
-        newMessage.file = fileData;
+      } else if (type === 'file') {
+        // For file messages, set both text and file properties
+        newMessage.text = fileName || fileData.fileName || 'File';
+        newMessage.file = {
+          url: fileData.url,
+          fileName: fileName || fileData.fileName || 'File',
+          fileType: fileData.fileType,
+          fileSize: fileData.fileSize
+        };
       }
   
       setMessages(previousMessages =>
@@ -205,33 +223,53 @@ const ChatDetail = () => {
       const response = await sendMessage({
         receiverId: receiverId,
         message_type: type,
-        content: fileData.url,
+        content: type === 'file' ? newMessage.text : fileData.url,
         file_meta: {
           url: fileData.url,
           file_type: fileData.fileType,
-          file_name: fileData.fileName,
+          file_name: fileName || fileData.fileName || 'File',
           file_size: fileData.fileSize
         }
       });
       
-      // If this is a new conversation, get the conversation ID and update route params
+      // Handle new conversation creation
       if (isNewConversation && response?.data?.status === 'success' && response.data.data.conversation_id) {
         const newConversationId = response.data.data.conversation_id;
-        
-        // Update navigation params
-        navigation.setParams({
-          conversationId: newConversationId
-        });
-        
-        // No longer a new conversation
+        navigation.setParams({ conversationId: newConversationId });
         setIsNewConversation(false);
       }
   
     } catch (error) {
       console.error('Error uploading file:', error);
+      Alert.alert('Error', 'Failed to upload file');
     }
   };
   
+
+  const renderMessageText = (props) => {
+    const { currentMessage } = props;
+    
+    if (currentMessage.file) {
+      return (
+        <View style={styles.fileContainer}>
+          <Ionicons name="document-outline" size={24} color="#0084ff" style={styles.fileIcon} />
+          <View style={styles.fileDetails}>
+            <Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">
+              {currentMessage.file.fileName || 'File'}
+            </Text>
+            <TouchableOpacity 
+              style={styles.downloadButton}
+              onPress={() => Linking.openURL(currentMessage.file.url)}
+            >
+              <Text style={styles.downloadText}>Mở</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+    
+    return null;
+  };
   // Update renderInputToolbar to include video button
   const renderInputToolbar = (props) => {
     return (
@@ -298,12 +336,17 @@ const ChatDetail = () => {
         multiple: false
       });
       
-      if (result.type === 'success') {
+      if (!result.canceled && result.assets && result.assets[0]) {
         setIsShowOptions(false);
-        await handleFileUpload(result.uri, 'file');
+        await handleFileUpload(result.assets[0].uri, 'file', result.assets[0].name);
+      } else if (result.type === 'success') {
+        // For older Expo DocumentPicker API
+        setIsShowOptions(false);
+        await handleFileUpload(result.uri, 'file', result.name);
       }
     } catch (error) {
       console.error('Error picking document:', error);
+      Alert.alert('Error', 'Failed to pick document');
     }
   };
   
@@ -432,7 +475,8 @@ const ChatDetail = () => {
     }
   };
 
-  // Update the renderBubble function to better handle media content
+  
+
   const renderBubble = (props) => {
     const { currentMessage, position } = props;
   
@@ -505,7 +549,132 @@ const ChatDetail = () => {
         </View>
       );
     }
+    
+
+    
+    // Nếu là file
+    // Nếu là file
+// Nếu là file
+// Nếu là file
+if (currentMessage.file) {
+  // Log for debugging
+  console.log('Rendering file bubble:', {
+    fileName: currentMessage.file.file_name || currentMessage.file.fileName,
+    url: currentMessage.file.url
+  });
   
+  return (
+    <View style={[
+      styles.fileBubble,
+      position === 'right' ? styles.fileBubbleRight : styles.fileBubbleLeft
+    ]}>
+      <View style={styles.fileContainer}>
+        <Ionicons 
+          name="document-outline" 
+          size={24} 
+          color={position === 'right' ? "#fff" : "#0084ff"} 
+          style={styles.fileIcon} 
+        />
+        <View style={styles.fileDetails}>
+          <Text 
+            style={[
+              styles.fileName, 
+              position === 'right' ? styles.fileNameRight : styles.fileNameLeft
+            ]} 
+            numberOfLines={1} 
+            ellipsizeMode="middle"
+          >
+            {currentMessage.file.file_name || currentMessage.file.fileName || 'File'}
+          </Text>
+          <TouchableOpacity 
+            style={[
+              styles.downloadButton,
+              position === 'right' ? styles.downloadButtonRight : styles.downloadButtonLeft
+            ]}
+            onPress={() => {
+              // Lấy URL đầy đủ từ message
+              let fileUrl = currentMessage.file.url;
+              
+              // Kiểm tra xem URL có phải là URL đầy đủ hay không
+              if (!fileUrl) {
+                console.error('Missing file URL');
+                Alert.alert('Lỗi', 'Không tìm thấy đường dẫn file');
+                return;
+              }
+              
+              // Đảm bảo URL là đầy đủ
+              if (!fileUrl.startsWith('http')) {
+                const s3BaseUrl = "https://bucket-zele.s3.ap-southeast-2.amazonaws.com/";
+                fileUrl = s3BaseUrl + fileUrl;
+              }
+              
+              console.log('Opening S3 URL:', fileUrl);
+              
+              // Mở URL trong trình duyệt
+              Linking.canOpenURL(fileUrl)
+                .then(supported => {
+                  if (supported) {
+                    return Linking.openURL(fileUrl);
+                  } else {
+                    console.log('Cannot open URL directly, trying browser');
+                    // Thử mở trong trình duyệt
+                    return Linking.openURL(fileUrl);
+                  }
+                })
+                .then(() => {
+                  console.log('Successfully opened URL');
+                })
+                .catch(err => {
+                  console.error('Error opening URL:', err);
+                  
+                  // Hiển thị thông báo lỗi và các tùy chọn khác
+                  Alert.alert(
+                    'Không thể mở file',
+                    'Bạn muốn thực hiện thao tác nào?',
+                    [
+                      { text: 'Hủy', style: 'cancel' },
+                      { 
+                        text: 'Sao chép link', 
+                        onPress: () => {
+                          Clipboard.setString(fileUrl);
+                          Alert.alert('Thành công', 'Đã sao chép link vào clipboard');
+                        }
+                      },
+                      {
+                        text: 'Mở trong trình duyệt',
+                        onPress: () => {
+                          // Thử mở trong trình duyệt web
+                          const browserUrl = Platform.OS === 'ios' 
+                            ? fileUrl 
+                            : fileUrl;
+                          Linking.openURL(browserUrl).catch(e => {
+                            console.error('Final attempt failed:', e);
+                            Alert.alert('Lỗi', 'Không thể mở file bằng bất kỳ cách nào');
+                          });
+                        }
+                      }
+                    ]
+                  );
+                });
+            }}
+          >
+            <Text style={[
+              styles.downloadText,
+              position === 'right' ? styles.downloadTextRight : styles.downloadTextLeft
+            ]}>Mở</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <Text style={[
+        styles.mediaTimestamp,
+        position === 'right' ? styles.mediaTimestampRight : styles.mediaTimestampLeft
+      ]}>
+        {new Date(currentMessage.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+      </Text>
+    </View>
+  );
+}
+    
     // Default bubble for text messages
     return (
       <Bubble
@@ -518,21 +687,11 @@ const ChatDetail = () => {
       />
     );
   };
-
   // In the return statement, update GiftedChat component
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-      {/* <Video
-  source={{ uri: 'https://bucket-zele.s3.ap-southeast-2.amazonaws.com/images/f047ab1c-8fe7-423f-9ea2-282e910efb0e.mov' }}
-  rate={1.0}
-  volume={1.0}
-  isMuted={false}
-  resizeMode="contain"
-  useNativeControls
-  shouldPlay
-  style={{ width: 300, height: 200 }}
-/> */}
+      {}
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
@@ -824,6 +983,67 @@ const styles = StyleSheet.create({
     color: '#888',
     fontStyle: 'italic',
     fontSize: 14,
+  },
+  fileBubble: {
+    borderRadius: 15,
+    padding: 10,
+    marginBottom: 10,
+    maxWidth: 250,
+  },
+  fileBubbleRight: {
+    backgroundColor: '#0084ff',
+    marginLeft: 60,
+    alignSelf: 'flex-end',
+  },
+  fileBubbleLeft: {
+    backgroundColor: '#f0f0f0',
+    marginRight: 60,
+    alignSelf: 'flex-start',
+  },
+  fileContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 200,
+  },
+  fileIcon: {
+    marginRight: 10,
+  },
+  fileDetails: {
+    flex: 1,
+  },
+  fileName: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 5,
+    maxWidth: 150,
+  },
+  fileNameRight: {
+    color: '#fff',
+  },
+  fileNameLeft: {
+    color: '#333',
+  },
+  downloadButton: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  downloadButtonRight: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  downloadButtonLeft: {
+    backgroundColor: 'rgba(0, 132, 255, 0.1)',
+  },
+  downloadText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  downloadTextRight: {
+    color: '#fff',
+  },
+  downloadTextLeft: {
+    color: '#0084ff',
   },
 });
 
