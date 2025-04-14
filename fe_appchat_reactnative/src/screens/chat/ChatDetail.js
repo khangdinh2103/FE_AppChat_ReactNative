@@ -10,7 +10,7 @@ import { initializeSocket, emitMessage, subscribeToMessages, subscribeToMessageR
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { uploadFileToS3 } from '../../services/s3Service';
-
+import { Video } from 'expo-av';
 
 const ChatDetail = () => {
   const route = useRoute();
@@ -21,6 +21,7 @@ const ChatDetail = () => {
   const [loading, setLoading] = useState(true);
   const socketRef = useRef(null);
   const [isShowOptions, setIsShowOptions] = useState(false);
+  const [isNewConversation, setIsNewConversation] = useState(false);
   
   // In useEffect for socket setup
   useEffect(() => {
@@ -34,7 +35,14 @@ const ChatDetail = () => {
     };
   
     setupSocket();
-    fetchMessages();
+    
+    // Check if conversationId exists - if not, it's a new conversation
+    if (conversationId) {
+      fetchMessages();
+    } else {
+      setIsNewConversation(true);
+      setLoading(false);
+    }
   
     return () => {
       if (socketRef.current) {
@@ -44,6 +52,7 @@ const ChatDetail = () => {
     };
   }, [conversationId]);
   
+  // Update fetchMessages to handle video messages
   const fetchMessages = async () => {
     try {
       setLoading(true);
@@ -70,6 +79,8 @@ const ChatDetail = () => {
             // Handle different message types for non-revoked messages
             else if (msg.message_type === 'image') {
               baseMessage.image = msg.content;
+            } else if (msg.message_type === 'video') {
+              baseMessage.video = msg.content;
             } else if (msg.message_type === 'file') {
               baseMessage.text = msg.file_meta?.file_name || msg.content;
               baseMessage.file = msg.file_meta;
@@ -88,52 +99,7 @@ const ChatDetail = () => {
     }
   };
 
-  // Update handleReceiveMessage to handle image messages
-  // Move handleReceiveMessage outside of useEffect
-  const handleReceiveMessage = (newMessage) => {
-    if (newMessage.conversation_id === conversationId) {
-      const formattedMessage = {
-        _id: newMessage._id || Date.now().toString(),
-        createdAt: new Date(newMessage.timestamp),
-        user: {
-          _id: newMessage.sender_id,
-          name: name,
-          avatar: avatar
-        }
-      };
-  
-      // ✅ Nếu là tin nhắn đã thu hồi
-      if (newMessage.is_revoked) {
-        formattedMessage.text = "Tin nhắn đã được thu hồi";
-        formattedMessage.revoked = true;
-      }
-      // ✅ Nếu chưa thu hồi thì xử lý theo loại
-      else if (newMessage.message_type === 'image') {
-        formattedMessage.image = newMessage.content;
-      } else if (newMessage.message_type === 'file') {
-        formattedMessage.text = newMessage.file_meta?.file_name || newMessage.content;
-        formattedMessage.file = newMessage.file_meta;
-      } else {
-        formattedMessage.text = newMessage.content;
-      }
-  
-      setMessages(prev => GiftedChat.append(prev, [formattedMessage]));
-    }
-  };
-  
-  
-  // Add separate useEffect for message subscription
-  useEffect(() => {
-    subscribeToMessages(handleReceiveMessage);
-  
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.off('receiveMessage', handleReceiveMessage);
-      }
-    };
-  }, [conversationId, name, avatar]);
-  
-
+  // Update onSend to handle new conversations
   const onSend = useCallback(async (newMessages = []) => {
     const messageText = newMessages[0].text;
     const tempId = newMessages[0]._id;
@@ -153,6 +119,19 @@ const ChatDetail = () => {
   
       if (response?.data?.status === 'success') {
         const serverMessageId = response.data.data._id;
+        
+        // If this is a new conversation, get the conversation ID and update route params
+        if (isNewConversation && response.data.data.conversation_id) {
+          const newConversationId = response.data.data.conversation_id;
+          
+          // Update navigation params
+          navigation.setParams({
+            conversationId: newConversationId
+          });
+          
+          // No longer a new conversation
+          setIsNewConversation(false);
+        }
   
         // Cập nhật lại _id của tin nhắn đã gửi
         setMessages(prevMessages =>
@@ -164,9 +143,87 @@ const ChatDetail = () => {
     } catch (error) {
       console.error('Error sending message:', error);
     }
-  }, [receiverId, conversationId, user._id]);
+  }, [receiverId, isNewConversation, navigation]);
   
-
+  // Update handleFileUpload to handle new conversations
+  // Add video picker function
+  const handleVideoPick = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: true,
+        quality: 1,
+      });
+  
+      if (!result.canceled) {
+        setIsShowOptions(false);
+        await handleFileUpload(result.assets[0].uri, 'video');
+      }
+    } catch (error) {
+      console.error('Error picking video:', error);
+    }
+  };
+  
+  // Update handleFileUpload to handle videos
+  const handleFileUpload = async (uri, type) => {
+    console.log("type:", type);
+    try {
+      const fileData = await uploadFileToS3(uri);
+      
+      const newMessage = {
+        _id: Date.now().toString(),
+        createdAt: new Date(),
+        user: {
+          _id: user._id,
+          name: user.name,
+          avatar: user.avatar
+        }
+      };
+  
+      if (type === 'image') {
+        newMessage.image = fileData.url;
+      } else if (type === 'video') {
+        newMessage.video = fileData.url;
+      } else {
+        newMessage.text = fileData.fileName;
+        newMessage.file = fileData;
+      }
+  
+      setMessages(previousMessages =>
+        GiftedChat.append(previousMessages, [newMessage])
+      );
+  
+      const response = await sendMessage({
+        receiverId: receiverId,
+        message_type: type,
+        content: fileData.url,
+        file_meta: {
+          url: fileData.url,
+          file_type: fileData.fileType,
+          file_name: fileData.fileName,
+          file_size: fileData.fileSize
+        }
+      });
+      
+      // If this is a new conversation, get the conversation ID and update route params
+      if (isNewConversation && response?.data?.status === 'success' && response.data.data.conversation_id) {
+        const newConversationId = response.data.data.conversation_id;
+        
+        // Update navigation params
+        navigation.setParams({
+          conversationId: newConversationId
+        });
+        
+        // No longer a new conversation
+        setIsNewConversation(false);
+      }
+  
+    } catch (error) {
+      console.error('Error uploading file:', error);
+    }
+  };
+  
+  // Update renderInputToolbar to include video button
   const renderInputToolbar = (props) => {
     return (
       <View style={styles.inputContainer}>
@@ -178,14 +235,14 @@ const ChatDetail = () => {
           <Ionicons name="camera-outline" size={24} color="#0084ff" />
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.optionButton}>
+        <TouchableOpacity style={styles.optionButton} onPress={handleImagePick}>
           <Ionicons name="image-outline" size={24} color="#0084ff" />
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.optionButton}>
-          <Ionicons name="mic-outline" size={24} color="#0084ff" />
+        <TouchableOpacity style={styles.optionButton} onPress={handleVideoPick}>
+          <Ionicons name="videocam-outline" size={24} color="#0084ff" />
         </TouchableOpacity>
-
+  
         <InputToolbar
           {...props}
           containerStyle={styles.inputToolbar}
@@ -205,6 +262,180 @@ const ChatDetail = () => {
       </View>
     );
   };
+
+  // Update handleReceiveMessage to handle image messages
+  // Move handleReceiveMessage outside of useEffect
+  // Update handleReceiveMessage to properly check conversation ID and log received messages
+  const handleReceiveMessage = (newMessage) => {
+    fetchMessages();
+    
+    // Check if this message belongs to the current conversation
+    if (newMessage.conversation_id === conversationId) {
+      const formattedMessage = {
+        _id: newMessage._id || Date.now().toString(),
+        createdAt: new Date(newMessage.timestamp),
+        user: {
+          _id: newMessage.sender_id,
+          name: name,
+          avatar: avatar
+        }
+      };
+  
+      // ✅ Nếu là tin nhắn đã thu hồi
+      if (newMessage.is_revoked) {
+        formattedMessage.text = "Tin nhắn đã được thu hồi";
+        formattedMessage.revoked = true;
+      }
+      // ✅ Nếu chưa thu hồi thì xử lý theo loại
+      else if (newMessage.message_type === 'image') {
+        formattedMessage.image = newMessage.content;
+      } else if (newMessage.message_type === 'video') {
+        formattedMessage.video = newMessage.content;
+      } else if (newMessage.message_type === 'file') {
+        formattedMessage.text = newMessage.file_meta?.file_name || newMessage.content;
+        formattedMessage.file = newMessage.file_meta;
+      } else {
+        formattedMessage.text = newMessage.content;
+      }
+  
+      console.log('Adding formatted message to chat:', formattedMessage);
+      
+      // Use a function to update state to ensure we're working with the latest state
+      setMessages(prevMessages => {
+        // Check if message already exists to avoid duplicates
+        const messageExists = prevMessages.some(msg => msg._id === formattedMessage._id);
+        if (messageExists) {
+          return prevMessages;
+        }
+        return GiftedChat.append(prevMessages, [formattedMessage]);
+      });
+    }
+  };
+  
+  
+  // Update the socket setup useEffect to properly handle socket connection
+  useEffect(() => {
+    console.log('Setting up socket connection...');
+    
+    const setupSocket = async () => {
+      const socketInstance = await initializeSocket();
+      socketRef.current = socketInstance;
+  
+      if (socketInstance) {
+        console.log('Socket connected successfully');
+        
+        // Remove any existing listeners to avoid duplicates
+        socketInstance.off('receiveMessage');
+        
+        // Add the new listener
+        socketInstance.on('receiveMessage', handleReceiveMessage);
+      }
+    };
+  
+    setupSocket();
+    
+    // Check if conversationId exists - if not, it's a new conversation
+    if (conversationId) {
+      fetchMessages();
+    } else {
+      setIsNewConversation(true);
+      setLoading(false);
+    }
+  
+    return () => {
+      if (socketRef.current) {
+        console.log('Cleaning up socket connection...');
+        socketRef.current.off('receiveMessage');
+        socketRef.current.disconnect();
+      }
+    };
+  }, [conversationId]);
+  
+  // Update the message subscription useEffect to properly handle message updates
+  useEffect(() => {
+    console.log('Setting up message subscription...');
+    subscribeToMessages(handleReceiveMessage);
+  
+    return () => {
+      console.log('Cleaning up message subscription...');
+      if (socketRef.current) {
+        socketRef.current.off('receiveMessage', handleReceiveMessage);
+      }
+    };
+  }, [conversationId, receiverId]);
+  
+
+  // const onSend = useCallback(async (newMessages = []) => {
+  //   const messageText = newMessages[0].text;
+  //   const tempId = newMessages[0]._id;
+  
+  //   try {
+  //     setMessages(previousMessages =>
+  //       GiftedChat.append(previousMessages, newMessages)
+  //     );
+  
+  //     // Gửi message lên server và nhận về ID thật
+  //     const response = await sendMessage({
+  //       receiverId: receiverId,
+  //       message_type: 'text',
+  //       content: messageText,
+  //       file_id: null
+  //     });
+  
+  //     if (response?.data?.status === 'success') {
+  //       const serverMessageId = response.data.data._id;
+  
+  //       // Cập nhật lại _id của tin nhắn đã gửi
+  //       setMessages(prevMessages =>
+  //         prevMessages.map(msg =>
+  //           msg._id === tempId ? { ...msg, _id: serverMessageId } : msg
+  //         )
+  //       );
+  //     }
+  //   } catch (error) {
+  //     console.error('Error sending message:', error);
+  //   }
+  // }, [receiverId, conversationId, user._id]);
+  
+
+  // const renderInputToolbar = (props) => {
+  //   return (
+  //     <View style={styles.inputContainer}>
+  //       <TouchableOpacity style={styles.optionButton} onPress={() => setIsShowOptions(!isShowOptions)}>
+  //         <Ionicons name="add-circle-outline" size={24} color="#0084ff" />
+  //       </TouchableOpacity>
+        
+  //       <TouchableOpacity style={styles.optionButton}>
+  //         <Ionicons name="camera-outline" size={24} color="#0084ff" />
+  //       </TouchableOpacity>
+        
+  //       <TouchableOpacity style={styles.optionButton}>
+  //         <Ionicons name="image-outline" size={24} color="#0084ff" />
+  //       </TouchableOpacity>
+        
+  //       <TouchableOpacity style={styles.optionButton}>
+  //         <Ionicons name="mic-outline" size={24} color="#0084ff" />
+  //       </TouchableOpacity>
+
+  //       <InputToolbar
+  //         {...props}
+  //         containerStyle={styles.inputToolbar}
+  //         renderComposer={(composerProps) => (
+  //           <Composer
+  //             {...composerProps}
+  //             textInputStyle={styles.composer}
+  //             placeholder="Tin nhắn"
+  //           />
+  //         )}
+  //         renderSend={(sendProps) => (
+  //           <Send {...sendProps} containerStyle={styles.sendContainer}>
+  //             <Ionicons name="send" size={24} color="#0084ff" />
+  //           </Send>
+  //         )}
+  //       />
+  //     </View>
+  //   );
+  // };
 
   // Add these functions before the return statement, after onSend
   const handleImagePick = async () => {
@@ -241,47 +472,48 @@ const ChatDetail = () => {
     }
   };
   
-  const handleFileUpload = async (uri, type) => {
-    try {
-      const fileData = await uploadFileToS3(uri);
+  
+  // const handleFileUpload = async (uri, type) => {
+  //   try {
+  //     const fileData = await uploadFileToS3(uri);
       
-      const newMessage = {
-        _id: Date.now().toString(),
-        createdAt: new Date(),
-        user: {
-          _id: user._id,
-          name: user.name,
-          avatar: user.avatar
-        }
-      };
+  //     const newMessage = {
+  //       _id: Date.now().toString(),
+  //       createdAt: new Date(),
+  //       user: {
+  //         _id: user._id,
+  //         name: user.name,
+  //         avatar: user.avatar
+  //       }
+  //     };
   
-      if (type === 'image') {
-        newMessage.image = fileData.url;
-      } else {
-        newMessage.text = fileData.fileName;
-        newMessage.file = fileData;
-      }
+  //     if (type === 'image') {
+  //       newMessage.image = fileData.url;
+  //     } else {
+  //       newMessage.text = fileData.fileName;
+  //       newMessage.file = fileData;
+  //     }
   
-      setMessages(previousMessages =>
-        GiftedChat.append(previousMessages, [newMessage])
-      );
+  //     setMessages(previousMessages =>
+  //       GiftedChat.append(previousMessages, [newMessage])
+  //     );
   
-      await sendMessage({
-        receiverId: receiverId,
-        message_type: type,
-        content: fileData.url,
-        file_meta: {
-          url: fileData.url,
-          file_type: fileData.fileType,
-          file_name: fileData.fileName,
-          file_size: fileData.fileSize
-        }
-      });
+  //     await sendMessage({
+  //       receiverId: receiverId,
+  //       message_type: type,
+  //       content: fileData.url,
+  //       file_meta: {
+  //         url: fileData.url,
+  //         file_type: fileData.fileType,
+  //         file_name: fileData.fileName,
+  //         file_size: fileData.fileSize
+  //       }
+  //     });
   
-    } catch (error) {
-      console.error('Error uploading file:', error);
-    }
-  };
+  //   } catch (error) {
+  //     console.error('Error uploading file:', error);
+  //   }
+  // };
   
   // Add this state for tracking long-pressed message
   const [selectedMessage, setSelectedMessage] = useState(null);
@@ -368,42 +600,59 @@ const ChatDetail = () => {
   // Add renderBubble function to customize message appearance
   const renderBubble = (props) => {
     const { currentMessage } = props;
-    const isRevoked = currentMessage.revoked;
+    console.log("hi", currentMessage);
   
-    // Nếu bị thu hồi và là ảnh => ẩn ảnh
-    if (isRevoked) {
-      currentMessage.image = null;
-      currentMessage.file = null;
+    // Nếu tin nhắn bị thu hồi
+    if (currentMessage.revoked) {
+      return (
+        <Bubble
+          {...props}
+          wrapperStyle={{
+            right: { backgroundColor: '#ccc' },
+            left: { backgroundColor: '#ccc' }
+          }}
+        />
+      );
     }
-    return (
-      <Bubble
-        {...props}
-        wrapperStyle={{
-          right: {
-            backgroundColor: isRevoked ? '#f0f0f0' : '#0084ff',
-          },
-          left: {
-            backgroundColor: isRevoked ? '#f0f0f0' : '#f1f0f0',
-          },
-        }}
-        textStyle={{
-          right: {
-            color: isRevoked ? '#999' : '#fff',
-            fontStyle: isRevoked ? 'italic' : 'normal',
-          },
-          left: {
-            color: isRevoked ? '#999' : '#000',
-            fontStyle: isRevoked ? 'italic' : 'normal',
-          },
-        }}
-      />
-    );
+  
+    // Nếu là video
+    if (currentMessage.video) {
+      return (
+        <View style={{ padding: 10 }}>
+          <Video
+            source={{ uri: currentMessage.video }}
+            loop={false}
+            autoPlay={false}
+            controls
+            rate={1.0}
+            volume={1.0}
+            isMuted={false}
+            resizeMode="contain"
+            shouldPlay={false}
+            useNativeControls
+            style={{ width: 250, height: 180, borderRadius: 10 }}
+          />
+        </View>
+      );
+    }
+  
+    return <Bubble {...props} />;
   };
 
   // In the return statement, update GiftedChat component
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+      {/* <Video
+  source={{ uri: 'https://bucket-zele.s3.ap-southeast-2.amazonaws.com/images/f047ab1c-8fe7-423f-9ea2-282e910efb0e.mov' }}
+  rate={1.0}
+  volume={1.0}
+  isMuted={false}
+  resizeMode="contain"
+  useNativeControls
+  shouldPlay
+  style={{ width: 300, height: 200 }}
+/> */}
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
@@ -466,18 +715,18 @@ const ChatDetail = () => {
             <Text style={styles.optionText}>Hình ảnh</Text>
           </TouchableOpacity>
           
+          <TouchableOpacity style={styles.optionItem} onPress={handleVideoPick}>
+            <View style={[styles.optionIcon, { backgroundColor: '#45B7D1' }]}>
+              <Ionicons name="videocam" size={24} color="#fff" />
+            </View>
+            <Text style={styles.optionText}>Video</Text>
+          </TouchableOpacity>
+          
           <TouchableOpacity style={styles.optionItem} onPress={handleDocumentPick}>
             <View style={[styles.optionIcon, { backgroundColor: '#4ECDC4' }]}>
               <Ionicons name="document" size={24} color="#fff" />
             </View>
             <Text style={styles.optionText}>File</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.optionItem}>
-            <View style={[styles.optionIcon, { backgroundColor: '#45B7D1' }]}>
-              <Ionicons name="location" size={24} color="#fff" />
-            </View>
-            <Text style={styles.optionText}>Vị trí</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -596,6 +845,34 @@ const styles = StyleSheet.create({
   optionText: {
     fontSize: 12,
     color: '#666',
+  },
+  video: {
+    width: 200,
+    height: 150,
+    borderRadius: 13,
+  },
+  videoBubble: {
+    padding: 5,
+    borderRadius: 15,
+    marginBottom: 10,
+    maxWidth: 250,
+  },
+  videoBubbleRight: {
+    backgroundColor: '#0084ff',
+    marginLeft: 60,
+    alignSelf: 'flex-end',
+  },
+  videoBubbleLeft: {
+    backgroundColor: '#f1f0f0',
+    marginRight: 60,
+    alignSelf: 'flex-start',
+  },
+  videoTimestamp: {
+    fontSize: 10,
+    color: '#fff',
+    alignSelf: 'flex-end',
+    marginTop: 5,
+    marginRight: 5,
   },
 });
 

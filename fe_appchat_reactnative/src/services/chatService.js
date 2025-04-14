@@ -1,7 +1,7 @@
 import axios from 'axios';
 // import { API_URL } from '@env';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-const API_URL = "http://192.168.1.193:5000";
+const API_URL = "https://6b68-2a09-bac1-7aa0-10-00-278-67.ngrok-free.app";
 // Create axios instance with base configuration
 const chatApi = axios.create({
   baseURL: API_URL
