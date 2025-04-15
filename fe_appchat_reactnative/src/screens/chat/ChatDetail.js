@@ -258,6 +258,37 @@ const ChatDetail = () => {
   };
   
   // Update renderInputToolbar to include video button
+  // Add a new function to handle camera access and photo capture
+  const handleCameraCapture = async () => {
+    try {
+      // Request camera permissions
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant camera permissions to take photos');
+        return;
+      }
+      
+      // Launch camera
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setIsShowOptions(false);
+        // Use the same handleFileUpload function that's used for gallery images
+        await handleFileUpload(result.assets[0].uri, 'image');
+      }
+    } catch (error) {
+      console.error('Error capturing photo:', error);
+      Alert.alert('Error', 'Failed to capture photo: ' + error.message);
+    }
+  };
+  
+  // Update the renderInputToolbar function to use the camera capture function
   const renderInputToolbar = (props) => {
     return (
       <View style={styles.inputContainer}>
@@ -265,7 +296,7 @@ const ChatDetail = () => {
           <Ionicons name="add-circle-outline" size={24} color="#0084ff" />
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.optionButton}>
+        <TouchableOpacity style={styles.optionButton} onPress={handleCameraCapture}>
           <Ionicons name="camera-outline" size={24} color="#0084ff" />
         </TouchableOpacity>
         
