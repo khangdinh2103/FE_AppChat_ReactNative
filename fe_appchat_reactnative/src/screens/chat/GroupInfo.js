@@ -37,10 +37,9 @@ import {
 const GroupInfo = () => {
   const route = useRoute();
   const navigation = useNavigation();
-  // Add console.log to debug the route params
   console.log("GroupInfo route params:", route.params);
-   // Extract parameters with fallback values
-   const { 
+
+  const { 
     group, 
     groupId: routeGroupId, 
     groupName: routeGroupName, 
@@ -49,7 +48,6 @@ const GroupInfo = () => {
     isAdmin = false 
   } = route.params || {};
   
-  // Use the group object if available, otherwise use individual params
   const groupId = group?._id || routeGroupId;
   const groupName = group?.name || routeGroupName || 'Group Chat';
   const groupAvatar = group?.avatar || routeGroupAvatar;
@@ -72,11 +70,19 @@ const GroupInfo = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   
+  // Normalize members data
+  const normalizedMembers = members.map(member => ({
+    user_id: member.user?._id || member.user_id || member._id,
+    name: member.user?.name || member.name || 'Thành viên không xác định',
+    avatar: member.user?.avatar || member.avatar,
+    role: member.role,
+    joined_at: member.joined_at,
+  }));
+
   // Fetch group details
   useEffect(() => {
     const fetchGroupData = async () => {
       try {
-        // Check if groupId is valid before making API call
         if (!groupId) {
           console.error('Invalid groupId:', groupId);
           Alert.alert('Lỗi', 'ID nhóm không hợp lệ');
@@ -85,13 +91,14 @@ const GroupInfo = () => {
         }
         setLoading(true);
         const data = await getGroupDetails(groupId);
+        console.log("Fetched group data:", data);
         setGroupInfo({
-          name: data.name,
+          name: data.name || 'Group Chat',
           avatar: data.avatar,
           description: data.description || '',
         });
         setEditedDescription(data.description || '');
-        setMembers(data.members);
+        setMembers(data.members || []);
       } catch (error) {
         console.error('Error fetching group data:', error);
         Alert.alert('Lỗi', 'Không thể tải thông tin nhóm: ' + error.message);
@@ -107,7 +114,6 @@ const GroupInfo = () => {
   const handleChangeAvatar = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
       if (status !== 'granted') {
         Alert.alert('Cần quyền truy cập', 'Vui lòng cấp quyền truy cập thư viện ảnh');
         return;
@@ -122,14 +128,8 @@ const GroupInfo = () => {
       
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setLoading(true);
-        
-        // Upload to S3
         const fileData = await uploadFileToS3(result.assets[0].uri);
-        
-        // Update group avatar
         await updateGroupInfo(groupId, { avatar: fileData.url });
-        
-        // Update local state
         setGroupInfo(prev => ({ ...prev, avatar: fileData.url }));
         setLoading(false);
       }
@@ -149,21 +149,17 @@ const GroupInfo = () => {
       }
       
       setLoading(true);
-      
       await updateGroupInfo(groupId, {
         name: editedName,
         description: editedDescription,
       });
-      
       setGroupInfo(prev => ({
         ...prev,
         name: editedName,
         description: editedDescription,
       }));
-      
       setIsEditing(false);
       setLoading(false);
-      
       Alert.alert('Thành công', 'Đã cập nhật thông tin nhóm');
     } catch (error) {
       console.error('Error updating group:', error);
@@ -175,7 +171,6 @@ const GroupInfo = () => {
   // Search users to add to group
   const handleSearch = async (query) => {
     setSearchQuery(query);
-    
     if (query.trim().length < 2) {
       setSearchResults([]);
       return;
@@ -184,12 +179,13 @@ const GroupInfo = () => {
     try {
       setSearchLoading(true);
       const results = await searchUsers(query);
-      
-      // Filter out users already in the group
+      console.log("Search results:", results);
       const filteredResults = results.filter(
-        result => !members.some(member => member.user_id === result._id)
-      );
-      
+        result => !members.some(member => member.user_id === result._id || member.user?._id === result._id)
+      ).map(result => ({
+        ...result,
+        name: result.name || result.email || 'Người dùng không xác định',
+      }));
       setSearchResults(filteredResults);
     } catch (error) {
       console.error('Error searching users:', error);
@@ -208,16 +204,12 @@ const GroupInfo = () => {
       }
       
       setLoading(true);
-      
       const memberIds = selectedUsers.map(user => user._id);
       await addGroupMembers(groupId, memberIds);
-      
-      // Emit socket event for each member
       memberIds.forEach(memberId => {
         emitAddMemberToGroup(groupId, memberId, user._id);
       });
       
-      // Update local members list
       const newMembers = [
         ...members,
         ...selectedUsers.map(user => ({
@@ -232,7 +224,6 @@ const GroupInfo = () => {
       setShowAddMembers(false);
       setSearchQuery('');
       setSearchResults([]);
-      
       Alert.alert('Thành công', 'Đã thêm thành viên vào nhóm');
     } catch (error) {
       console.error('Error adding members:', error);
@@ -258,10 +249,7 @@ const GroupInfo = () => {
                 try {
                   setLoading(true);
                   await leaveGroup(groupId);
-                  
-                  // Emit socket event
                   emitRemoveMemberFromGroup(groupId, user._id, user._id);
-                  
                   navigation.navigate('Home');
                   Alert.alert('Thành công', 'Bạn đã rời khỏi nhóm');
                 } catch (error) {
@@ -288,11 +276,9 @@ const GroupInfo = () => {
               try {
                 setLoading(true);
                 await removeGroupMember(groupId, memberId);
-                
-                // Update local members list
-                setMembers(members.filter(member => member.user_id !== memberId));
+                setMembers(members.filter(member => 
+                  (member.user_id || member.user?._id) !== memberId));
                 setLoading(false);
-                
                 Alert.alert('Thành công', 'Đã xóa thành viên khỏi nhóm');
               } catch (error) {
                 console.error('Error removing member:', error);
@@ -313,17 +299,13 @@ const GroupInfo = () => {
   const handleChangeRole = async (memberId, currentRole) => {
     try {
       const newRole = currentRole === 'admin' ? 'member' : 'admin';
-      
       setLoading(true);
       await updateMemberRole(groupId, memberId, newRole);
-      
-      // Update local members list
       setMembers(members.map(member => 
-        member.user_id === memberId 
+        (member.user_id || member.user?._id) === memberId 
           ? { ...member, role: newRole } 
           : member
       ));
-      
       setLoading(false);
       Alert.alert('Thành công', `Đã thay đổi vai trò thành ${newRole === 'admin' ? 'quản trị viên' : 'thành viên'}`);
     } catch (error) {
@@ -335,23 +317,29 @@ const GroupInfo = () => {
 
   // Render member item
   const renderMemberItem = ({ item }) => {
-    const isCurrentUser = item.user_id === user._id;
-    const isCreator = item.role === 'creator';
-    const isAdmin = item.role === 'admin' || isCreator;
-    
+    const member = {
+      user_id: item.user?._id || item.user_id || item._id,
+      name: item.user?.name || item.name || 'Thành viên không xác định',
+      avatar: item.user?.avatar || item.avatar,
+      role: item.role,
+    };
+    const isCurrentUser = member.user_id === user._id;
+    const isCreator = member.role === 'creator';
+    const isAdmin = member.role === 'admin' || isCreator;
+
     return (
       <View style={styles.memberItem}>
-        {item.avatar ? (
-          <Image source={{ uri: item.avatar }} style={styles.memberAvatar} />
+        {member.avatar ? (
+          <Image source={{ uri: member.avatar }} style={styles.memberAvatar} />
         ) : (
           <View style={[styles.memberAvatar, styles.avatarPlaceholder]}>
-            <Text style={styles.avatarText}>{item.name.charAt(0)}</Text>
+            <Text style={styles.avatarText}>{member.name.charAt(0).toUpperCase()}</Text>
           </View>
         )}
         
         <View style={styles.memberInfo}>
           <Text style={styles.memberName}>
-            {item.name} {isCurrentUser ? '(Bạn)' : ''}
+            {member.name} {isCurrentUser ? '(Bạn)' : ''}
           </Text>
           <Text style={styles.memberRole}>
             {isCreator ? 'Người tạo nhóm' : (isAdmin ? 'Quản trị viên' : 'Thành viên')}
@@ -361,7 +349,7 @@ const GroupInfo = () => {
         {isAdmin && route.params.isAdmin && !isCurrentUser && !isCreator && (
           <TouchableOpacity 
             style={styles.memberAction}
-            onPress={() => handleChangeRole(item.user_id, item.role)}
+            onPress={() => handleChangeRole(member.user_id, member.role)}
           >
             <Text style={styles.actionText}>
               {isAdmin ? 'Hạ cấp' : 'Thăng cấp'}
@@ -372,7 +360,7 @@ const GroupInfo = () => {
         {(route.params.isAdmin || isCurrentUser) && !isCreator && (
           <TouchableOpacity 
             style={[styles.memberAction, styles.removeAction]}
-            onPress={() => handleRemoveMember(item.user_id)}
+            onPress={() => handleRemoveMember(member.user_id)}
           >
             <Text style={styles.removeText}>
               {isCurrentUser ? 'Rời nhóm' : 'Xóa'}
@@ -429,39 +417,42 @@ const GroupInfo = () => {
           <FlatList
             data={searchResults}
             keyExtractor={item => item._id}
-            renderItem={({ item }) => (
-              <TouchableOpacity 
-                style={styles.searchResultItem}
-                onPress={() => {
-                  setSearchResults(prevResults => 
-                    prevResults.map(user => 
-                      user._id === item._id 
-                        ? { ...user, selected: !user.selected } 
-                        : user
-                    )
-                  );
-                }}
-              >
-                {item.avatar ? (
-                  <Image source={{ uri: item.avatar }} style={styles.resultAvatar} />
-                ) : (
-                  <View style={[styles.resultAvatar, styles.avatarPlaceholder]}>
-                    <Text style={styles.avatarText}>{item.name.charAt(0)}</Text>
-                  </View>
-                )}
-                
-                <Text style={styles.resultName}>{item.name}</Text>
-                
-                <View style={[
-                  styles.checkbox,
-                  item.selected && styles.checkboxSelected
-                ]}>
-                  {item.selected && (
-                    <Ionicons name="checkmark" size={16} color="#fff" />
+            renderItem={({ item }) => {
+              const userName = item.name || item.email || 'Người dùng không xác định';
+              return (
+                <TouchableOpacity 
+                  style={styles.searchResultItem}
+                  onPress={() => {
+                    setSearchResults(prevResults => 
+                      prevResults.map(user => 
+                        user._id === item._id 
+                          ? { ...user, selected: !user.selected } 
+                          : user
+                      )
+                    );
+                  }}
+                >
+                  {item.avatar ? (
+                    <Image source={{ uri: item.avatar }} style={styles.resultAvatar} />
+                  ) : (
+                    <View style={[styles.resultAvatar, styles.avatarPlaceholder]}>
+                      <Text style={styles.avatarText}>{userName.charAt(0).toUpperCase()}</Text>
+                    </View>
                   )}
-                </View>
-              </TouchableOpacity>
-            )}
+                  
+                  <Text style={styles.resultName}>{userName}</Text>
+                  
+                  <View style={[
+                    styles.checkbox,
+                    item.selected && styles.checkboxSelected
+                  ]}>
+                    {item.selected && (
+                      <Ionicons name="checkmark" size={16} color="#fff" />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
             ListEmptyComponent={() => (
               <Text style={styles.emptyText}>
                 {searchQuery.length > 0 
@@ -516,7 +507,7 @@ const GroupInfo = () => {
           ) : (
             <View style={[styles.groupAvatar, styles.avatarPlaceholder]}>
               <Text style={styles.groupAvatarText}>
-                {groupInfo.name.charAt(0)}
+                {(groupInfo.name || 'G').charAt(0).toUpperCase()}
               </Text>
             </View>
           )}
@@ -561,7 +552,7 @@ const GroupInfo = () => {
       
       <View style={styles.membersSection}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Thành viên ({members.length})</Text>
+          <Text style={styles.sectionTitle}>Thành viên ({normalizedMembers.length})</Text>
           {isAdmin && (
             <TouchableOpacity 
               style={styles.addButton}
@@ -573,8 +564,8 @@ const GroupInfo = () => {
         </View>
         
         <FlatList
-          data={members}
-          keyExtractor={item => item.user_id}
+          data={normalizedMembers}
+          keyExtractor={item => item.user_id.toString()}
           renderItem={renderMemberItem}
           contentContainerStyle={styles.membersList}
         />

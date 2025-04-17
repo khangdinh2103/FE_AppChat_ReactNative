@@ -1,90 +1,105 @@
-import React, { useRef, useState, useCallback, useEffect, useContext } from "react";
+import React, { useState, useEffect, useRef, useCallback, useContext } from "react";
 import {
   View,
   Text,
-  Image,
-  StyleSheet,
   TouchableOpacity,
-  TextInput,
-  Platform,
+  Image,
   Alert,
-  Linking,
-  FlatList,
   ActivityIndicator,
+  StyleSheet,
 } from "react-native";
-import { GiftedChat, InputToolbar, Composer, Send, Bubble } from "react-native-gifted-chat";
-import Ionicons from "react-native-vector-icons/Ionicons";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { GiftedChat, Bubble, InputToolbar, Composer, Send } from "react-native-gifted-chat";
+import { Ionicons } from "@expo/vector-icons";
 import { AuthContext } from "../../contexts/AuthContext";
-import { getMessages, sendMessage, revokeMessage } from "../../services/chatService";
-import { getGroupDetails } from "../../services/groupService";
-// Update your imports
-import { 
-  initializeSocket, 
-  emitMessage, 
-  subscribeToMessages, 
-  subscribeToMessageRevocation,
+import {
+  getGroupDetails,
+  sendGroupMessage,
+  getMessages,
+  initializeSocket,
   joinGroupRoom,
   leaveGroupRoom,
+  emitMessage,
+  subscribeToMessages,
+  subscribeToMessageRevocation,
   subscribeToMemberAddedToGroup,
   subscribeToMemberRemovedFromGroup,
-  subscribeToGroupUpdated
-} from "../../services/socketService";
-import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
-import { uploadFileToS3 } from '../../services/s3Service';
-import { Video } from 'expo-av';
+  subscribeToGroupUpdated,
+  revokeMessage,
+} from "../../services/chatService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+// import * as ImagePicker from "expo-image-picker";
+// import * as DocumentPicker from "expo-document-picker";
+// import Video from "react-native-video";
+// import * as Linking from "expo-linking";
 
 const GroupChatDetail = () => {
   const route = useRoute();
   const navigation = useNavigation();
-  // Add console.log to debug the route params
   console.log("GroupChatDetail route params:", route.params);
-  
-  // Extract parameters with fallback values to prevent undefined errors
-  const { group, groupId: routeGroupId, groupName: routeGroupName, groupAvatar: routeGroupAvatar } = route.params || {};
-  
-  // Use the group object if available, otherwise use individual params
+
+  // Extract parameters with fallback values
+  const { group, groupId: routeGroupId, groupName: routeGroupName, groupAvatar: routeGroupAvatar } =
+    route.params || {};
   const groupId = group?._id || routeGroupId;
   const groupName = group?.name || routeGroupName;
   const groupAvatar = group?.avatar || routeGroupAvatar;
+
   const { user } = useContext(AuthContext);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [groupInfo, setGroupInfo] = useState(null);
+  const [conversationId, setConversationId] = useState(null); // Lưu conversationId
   const [members, setMembers] = useState([]);
-  const socketRef = useRef(null);
   const [isShowOptions, setIsShowOptions] = useState(false);
   const [deletedMessageIds, setDeletedMessageIds] = useState([]);
+  const socketRef = useRef(null);
 
   // Fetch group details and messages
   useEffect(() => {
     const fetchGroupData = async () => {
       try {
-        if (!groupId) {
-          console.error('Invalid groupId:', groupId);
-          Alert.alert('Lỗi', 'ID nhóm không hợp lệ');
+        if (!groupId || typeof groupId !== "string") {
+          console.error("Invalid groupId:", groupId);
+          Alert.alert("Lỗi", "ID nhóm không hợp lệ.");
           navigation.goBack();
           return;
         }
         setLoading(true);
+        console.log("Fetching group details for groupId:", groupId);
         const groupData = await getGroupDetails(groupId);
+        console.log("Group data received:", groupData);
+
+        if (!groupData) {
+          throw new Error("Không thể tải thông tin nhóm");
+        }
         setGroupInfo(groupData);
-        setMembers(groupData.members);
-        
-        // Now fetch messages
-        await fetchMessages();
+        setConversationId(groupData.conversation_id); // Lưu conversation_id
+        setMembers(groupData.members || []);
+
+        // Fetch messages after getting conversation_id
+        await fetchMessages(groupData.conversation_id);
       } catch (error) {
-        console.error('Error fetching group data:', error);
-        Alert.alert('Lỗi', 'Không thể tải thông tin nhóm: ' + error.message);
+        console.error("Error fetching group data:", error);
+        Alert.alert(
+          "Lỗi",
+          `Không thể tải thông tin nhóm: ${error.message || "Vui lòng thử lại."}`,
+          [{ text: "Quay lại", onPress: () => navigation.goBack() }]
+        );
       } finally {
         setLoading(false);
       }
     };
 
-    fetchGroupData();
-    loadDeletedMessageIds();
+    if (groupId) {
+      fetchGroupData();
+      loadDeletedMessageIds();
+    } else {
+      console.error("No groupId available");
+      Alert.alert("Lỗi", "Không thể xác định ID nhóm", [
+        { text: "Quay lại", onPress: () => navigation.goBack() },
+      ]);
+    }
   }, [groupId]);
 
   // Socket setup
@@ -92,47 +107,37 @@ const GroupChatDetail = () => {
     const setupSocket = async () => {
       const socketInstance = await initializeSocket();
       socketRef.current = socketInstance;
-  
+
       if (socketInstance) {
-        // Remove any existing listeners to avoid duplicates
-        socketInstance.off('receiveMessage');
-        
-        // Add the new listener
-        socketInstance.on('receiveMessage', handleReceiveMessage);
-        
-        // Join group room
+        socketInstance.off("receiveGroupMessage");
+        socketInstance.on("receiveGroupMessage", handleReceiveMessage);
+
         joinGroupRoom(groupId);
-        
-        // Subscribe to group events
+
         const unsubscribeMemberAdded = subscribeToMemberAddedToGroup((data) => {
           if (data.groupId === groupId) {
-            // Refresh group details
             fetchGroupData();
           }
         });
-        
+
         const unsubscribeMemberRemoved = subscribeToMemberRemovedFromGroup((data) => {
           if (data.groupId === groupId) {
-            // Refresh group details
             fetchGroupData();
-            
-            // If current user was removed, navigate back
             if (data.memberId === user._id) {
-              Alert.alert('Thông báo', 'Bạn đã bị xóa khỏi nhóm');
-              navigation.navigate('Home');
+              Alert.alert("Thông báo", "Bạn đã bị xóa khỏi nhóm");
+              navigation.navigate("Home");
             }
           }
         });
-        
+
         const unsubscribeGroupUpdated = subscribeToGroupUpdated((data) => {
           if (data.groupId === groupId) {
-            // Refresh group details
             fetchGroupData();
           }
         });
-        
+
         return () => {
-          socketInstance.off('receiveMessage');
+          socketInstance.off("receiveGroupMessage");
           leaveGroupRoom(groupId);
           unsubscribeMemberAdded();
           unsubscribeMemberRemoved();
@@ -140,13 +145,13 @@ const GroupChatDetail = () => {
         };
       }
     };
-  
+
     setupSocket();
-  
+
     return () => {
       if (socketRef.current) {
-        socketRef.current.off('receiveMessage');
-        socketRef.current.emit('leaveGroupRoom', { groupId });
+        socketRef.current.off("receiveGroupMessage");
+        socketRef.current.emit("leaveGroupRoom", { groupId });
       }
     };
   }, [groupId, user._id]);
@@ -155,112 +160,114 @@ const GroupChatDetail = () => {
   useEffect(() => {
     subscribeToMessages(handleReceiveMessage);
     subscribeToMessageRevocation(handleMessageRevoked);
-  
+
     return () => {
       if (socketRef.current) {
-        socketRef.current.off('receiveMessage', handleReceiveMessage);
-        socketRef.current.off('messageRevoked', handleMessageRevoked);
+        socketRef.current.off("receiveGroupMessage", handleReceiveMessage);
+        socketRef.current.off("messageRevoked", handleMessageRevoked);
       }
     };
   }, [messages]);
 
   // Fetch messages
-  const fetchMessages = async () => {
+  const fetchMessages = async (convId) => {
     try {
-      const response = await getMessages(null, groupId); // Update your API to accept groupId
-      if (response?.data?.status === 'success') {
+      if (!convId) {
+        throw new Error("conversationId không hợp lệ");
+      }
+      console.log("Fetching messages for conversationId:", convId);
+      const response = await getMessages(convId);
+      console.log("Messages API response:", response.data);
+
+      if (response.data.status === "success" && Array.isArray(response.data.data)) {
         const formattedMessages = response.data.data
           .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-          .map(msg => {
-            const sender = members.find(m => m.user_id === msg.sender_id) || {};
-            
+          .map((msg) => {
+            const sender = members.find((m) => m.user_id === msg.sender_id) || {
+              name: "Unknown",
+              avatar: null,
+            };
             const baseMessage = {
               _id: msg._id,
               createdAt: new Date(msg.timestamp),
               user: {
                 _id: msg.sender_id,
-                name: sender.name || 'Unknown',
-                avatar: sender.avatar || null
-              }
+                name: sender.name,
+                avatar: sender.avatar,
+              },
             };
-  
-            // Check if message is revoked
             if (msg.is_revoked) {
               baseMessage.text = "Tin nhắn đã được thu hồi";
               baseMessage.revoked = true;
-            } 
-            // Handle different message types for non-revoked messages
-            else if (msg.message_type === 'image') {
+            } else if (msg.message_type === "image") {
               baseMessage.image = msg.content;
-            } else if (msg.message_type === 'video') {
+            } else if (msg.message_type === "video") {
               baseMessage.video = msg.content;
-            } else if (msg.message_type === 'file') {
-              baseMessage.text = msg.file_meta?.file_name || 'File';
+            } else if (msg.message_type === "file") {
+              baseMessage.text = msg.file_meta?.file_name || "File";
               baseMessage.file = {
                 url: msg.file_meta?.url || msg.content,
-                file_name: msg.file_meta?.file_name || 'Unknown',
-                file_type: msg.file_meta?.file_type || 'application/octet-stream',
+                file_name: msg.file_meta?.file_name || "Unknown",
+                file_type: msg.file_meta?.file_type || "application/octet-stream",
                 file_size: msg.file_meta?.file_size || 0,
               };
             } else {
               baseMessage.text = msg.content;
             }
-  
             return baseMessage;
           });
-          
-        // Filter out locally deleted messages
+
         const filteredMessages = formattedMessages.filter(
-          msg => !deletedMessageIds.includes(msg._id)
+          (msg) => !deletedMessageIds.includes(msg._id)
         );
-        
         setMessages(filteredMessages);
+      } else {
+        console.warn("Invalid messages response:", response.data);
+        setMessages([]);
       }
     } catch (error) {
-      console.error('Error fetching messages:', error);
+      console.error("Error fetching messages:", error);
+      setMessages([]);
+      if (!error.response || error.response.status < 500) {
+        Alert.alert("Lỗi", "Không thể tải tin nhắn. Vui lòng thử lại.");
+      }
     }
   };
 
   // Handle receiving messages
-  const handleReceiveMessage = (newMessage) => {
-    // Check if this message belongs to the current group and is not deleted
-    if (newMessage.group_id === groupId && !deletedMessageIds.includes(newMessage._id)) {
-      const sender = members.find(m => m.user_id === newMessage.sender_id) || {};
-      
-      const formattedMessage = {
-        _id: newMessage._id || Date.now().toString(),
-        createdAt: new Date(newMessage.timestamp),
-        user: {
-          _id: newMessage.sender_id,
-          name: sender.name || 'Unknown',
-          avatar: sender.avatar || null
-        }
+  const handleReceiveMessage = (data) => {
+    const { message, conversationId: msgConvId } = data;
+    if (msgConvId === conversationId && !deletedMessageIds.includes(message._id)) {
+      const sender = members.find((m) => m.user_id === message.sender_id) || {
+        name: "Unknown",
+        avatar: null,
       };
-  
-      // Handle revoked messages
-      if (newMessage.is_revoked) {
+      const formattedMessage = {
+        _id: message._id,
+        createdAt: new Date(message.timestamp),
+        user: {
+          _id: message.sender_id,
+          name: sender.name,
+          avatar: sender.avatar,
+        },
+      };
+      if (message.is_revoked) {
         formattedMessage.text = "Tin nhắn đã được thu hồi";
         formattedMessage.revoked = true;
-      }
-      // Handle different message types
-      else if (newMessage.message_type === 'image') {
-        formattedMessage.image = newMessage.content;
-      } else if (newMessage.message_type === 'video') {
-        formattedMessage.video = newMessage.content;
-      } else if (newMessage.message_type === 'file') {
-        formattedMessage.text = newMessage.file_meta?.file_name || newMessage.content;
-        formattedMessage.file = newMessage.file_meta;
+      } else if (message.message_type === "image") {
+        formattedMessage.image = message.content;
+      } else if (message.message_type === "video") {
+        formattedMessage.video = message.content;
+      } else if (message.message_type === "file") {
+        formattedMessage.text = message.file_meta?.file_name || "File";
+        formattedMessage.file = message.file_meta;
       } else {
-        formattedMessage.text = newMessage.content;
+        formattedMessage.text = message.content;
       }
-      
-      // Update messages state
-      setMessages(prevMessages => {
-        // Check if message already exists to avoid duplicates
-        const messageExists = prevMessages.some(msg => msg._id === formattedMessage._id);
-        if (messageExists) {
-          return prevMessages;
-        }
+
+      setMessages((prevMessages) => {
+        const messageExists = prevMessages.some((msg) => msg._id === formattedMessage._id);
+        if (messageExists) return prevMessages;
         return GiftedChat.append(prevMessages, [formattedMessage]);
       });
     }
@@ -269,10 +276,10 @@ const GroupChatDetail = () => {
   // Handle revoked messages
   const handleMessageRevoked = (data) => {
     if (data.messageId) {
-      setMessages(prevMessages => 
-        prevMessages.map(msg => 
-          msg._id === data.messageId 
-            ? { ...msg, text: "Tin nhắn đã được thu hồi", revoked: true } 
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) =>
+          msg._id === data.messageId
+            ? { ...msg, text: "Tin nhắn đã được thu hồi", revoked: true }
             : msg
         )
       );
@@ -280,91 +287,159 @@ const GroupChatDetail = () => {
   };
 
   // Send message
-  const onSend = useCallback(async (newMessages = []) => {
-    const messageText = newMessages[0].text;
-    const tempId = newMessages[0]._id;
-  
-    try {
-      setMessages(previousMessages =>
-        GiftedChat.append(previousMessages, newMessages)
-      );
-  
-      // Send message to server
-      const response = await sendMessage({
-        groupId: groupId,
-        message_type: 'text',
-        content: messageText,
-        file_id: null
-      });
-  
-      if (response?.data?.status === 'success') {
-        const serverMessageId = response.data.data._id;
-        
-        // Update message ID
-        setMessages(prevMessages =>
-          prevMessages.map(msg =>
-            msg._id === tempId ? { ...msg, _id: serverMessageId } : msg
-          )
-        );
-      }
-    } catch (error) {
-      console.error('Error sending message:', error);
-      Alert.alert('Lỗi', 'Không thể gửi tin nhắn: ' + error.message);
-    }
-  }, [groupId]);
+  const onSend = useCallback(
+    async (newMessages = []) => {
+      let tempMessage = null;
+      try {
+        const messageText = newMessages[0].text;
+        if (!messageText.trim()) return;
+        if (!conversationId) throw new Error("conversationId không hợp lệ");
 
-  // File upload handler
-  const handleFileUpload = async (uri, type, fileMetadata = null) => {
-    try {
-      if (!uri) {
-        throw new Error('Invalid file URI');
+        const messageData = {
+          conversationId,
+          message_type: "text",
+          content: messageText,
+        };
+
+        tempMessage = {
+          _id: Date.now().toString(),
+          text: messageText,
+          createdAt: new Date(),
+          user: {
+            _id: user._id,
+            name: user.name,
+            avatar: user.avatar,
+          },
+          pending: true,
+        };
+
+        setMessages((previousMessages) => GiftedChat.append(previousMessages, [tempMessage]));
+
+        const response = await sendGroupMessage(messageData);
+        if (response.data.status === "success") {
+          emitMessage({ message: response.data.data, groupId });
+
+          const confirmedMessage = {
+            _id: response.data.data._id,
+            text: response.data.data.content,
+            createdAt: new Date(response.data.data.timestamp),
+            user: {
+              _id: user._id,
+              name: user.name,
+              avatar: user.avatar,
+            },
+          };
+
+          setMessages((previousMessages) =>
+            previousMessages.map((msg) =>
+              msg._id === tempMessage._id ? confirmedMessage : msg
+            )
+          );
+        } else {
+          throw new Error(response.data.message || "Không thể gửi tin nhắn.");
+        }
+      } catch (error) {
+        console.error("Error sending message:", error);
+        if (tempMessage) {
+          setMessages((previousMessages) =>
+            previousMessages.filter((msg) => msg._id !== tempMessage._id)
+          );
+        }
+        Alert.alert("Lỗi", `Không thể gửi tin nhắn: ${error.message || "Vui lòng thử lại."}`);
       }
-      
-      const fileData = await uploadFileToS3(uri, fileMetadata);
-      
-      const newMessage = {
+    },
+    [conversationId, groupId, user]
+  );
+
+  // Send media
+  const handleSendMedia = async (mediaType, fileUri, fileName, fileType, fileSize) => {
+    let tempMessage = null;
+    try {
+      if (!conversationId) throw new Error("conversationId không hợp lệ");
+
+      const messageData = {
+        conversationId,
+        message_type: mediaType,
+        content: mediaType === "text" ? fileUri : "",
+        file_meta: {
+          url: fileUri,
+          file_name: fileName,
+          file_type: fileType,
+          file_size: fileSize,
+        },
+      };
+
+      tempMessage = {
         _id: Date.now().toString(),
         createdAt: new Date(),
         user: {
           _id: user._id,
           name: user.name,
-          avatar: user.avatar
-        }
+          avatar: user.avatar,
+        },
+        pending: true,
       };
-  
-      if (type === 'image') {
-        newMessage.image = fileData.url;
-      } else if (type === 'video') {
-        newMessage.video = fileData.url;
-      } else if (type === 'file') {
-        newMessage.text = fileData.fileName || 'File';
-        newMessage.file = {
-          url: fileData.url,
-          file_name: fileData.fileName,
-          file_type: fileData.fileType,
-          file_size: fileData.fileSize
+
+      if (mediaType === "image") {
+        tempMessage.image = fileUri;
+      } else if (mediaType === "video") {
+        tempMessage.video = fileUri;
+      } else if (mediaType === "file") {
+        tempMessage.text = fileName;
+        tempMessage.file = {
+          url: fileUri,
+          file_name: fileName,
+          file_type: fileType,
+          file_size: fileSize,
         };
       }
-  
-      setMessages(previousMessages =>
-        GiftedChat.append(previousMessages, [newMessage])
-      );
-  
-      const response = await sendMessage({
-        groupId: groupId,
-        message_type: type,
-        content: fileData.url,
-        file_meta: {
-          url: fileData.url,
-          file_type: fileData.fileType,
-          file_name: fileData.fileName,
-          file_size: fileData.fileSize
+
+      setMessages((previousMessages) => GiftedChat.append(previousMessages, [tempMessage]));
+
+      const response = await sendGroupMessage(messageData);
+      if (response.data.status === "success") {
+        emitMessage({ message: response.data.data, groupId });
+
+        const confirmedMessage = {
+          _id: response.data.data._id,
+          createdAt: new Date(response.data.data.timestamp),
+          user: {
+            _id: user._id,
+            name: user.name,
+            avatar: user.avatar,
+          },
+        };
+
+        if (mediaType === "image") {
+          confirmedMessage.image = response.data.data.content;
+        } else if (mediaType === "video") {
+          confirmedMessage.video = response.data.data.content;
+        } else if (mediaType === "file") {
+          confirmedMessage.text = fileName;
+          confirmedMessage.file = {
+            url: response.data.data.content,
+            file_name: fileName,
+            file_type: fileType,
+            file_size: fileSize,
+          };
         }
-      });
-      
+
+        setMessages((previousMessages) =>
+          previousMessages.map((msg) =>
+            msg._id === tempMessage._id ? confirmedMessage : msg
+          )
+        );
+      } else {
+        throw new Error(response.data.message || "Không thể gửi tệp.");
+      }
     } catch (error) {
-      console.error('Error uploading file:', error);
-      Alert.alert('Lỗi', 'Không thể tải lên tệp: ' + error.message);
+      console.error("Error sending media:", error);
+      if (tempMessage) {
+        setMessages((previousMessages) =>
+          previousMessages.filter((msg) => msg._id !== tempMessage._id)
+        );
+      }
+      Alert.alert("Lỗi", `Không thể gửi tệp: ${error.message || "Vui lòng thử lại."}`);
     }
   };
 
@@ -375,13 +450,15 @@ const GroupChatDetail = () => {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 1,
       });
-  
+
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setIsShowOptions(false);
-        await handleFileUpload(result.assets[0].uri, 'image');
+        const { uri, fileName, mimeType, fileSize } = result.assets[0];
+        await handleSendMedia("image", uri, fileName || "image.jpg", mimeType || "image/jpeg", fileSize || 0);
       }
     } catch (error) {
-      console.error('Error picking image:', error);
+      console.error("Error picking image:", error);
+      Alert.alert("Lỗi", "Không thể chọn ảnh.");
     }
   };
 
@@ -393,13 +470,15 @@ const GroupChatDetail = () => {
         allowsEditing: true,
         quality: 1,
       });
-  
+
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setIsShowOptions(false);
-        await handleFileUpload(result.assets[0].uri, 'video');
+        const { uri, fileName, mimeType, fileSize } = result.assets[0];
+        await handleSendMedia("video", uri, fileName || "video.mp4", mimeType || "video/mp4", fileSize || 0);
       }
     } catch (error) {
-      console.error('Error picking video:', error);
+      console.error("Error picking video:", error);
+      Alert.alert("Lỗi", "Không thể chọn video.");
     }
   };
 
@@ -407,25 +486,26 @@ const GroupChatDetail = () => {
   const handleCameraCapture = async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      
-      if (status !== 'granted') {
-        Alert.alert('Cần quyền truy cập', 'Vui lòng cấp quyền truy cập camera');
+      if (status !== "granted") {
+        Alert.alert("Cần quyền truy cập", "Vui lòng cấp quyền truy cập camera");
         return;
       }
-      
+
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
       });
-      
+
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setIsShowOptions(false);
-        await handleFileUpload(result.assets[0].uri, 'image');
+        const { uri, fileName, mimeType, fileSize } = result.assets[0];
+        await handleSendMedia("image", uri, fileName || "photo.jpg", mimeType || "image/jpeg", fileSize || 0);
       }
     } catch (error) {
-      console.error('Error capturing photo:', error);
+      console.error("Error capturing photo:", error);
+      Alert.alert("Lỗi", "Không thể chụp ảnh.");
     }
   };
 
@@ -433,100 +513,63 @@ const GroupChatDetail = () => {
   const handleDocumentPick = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        multiple: false
+        type: "*/*",
+        multiple: false,
       });
-      
+
       if (result.canceled === false && result.assets && result.assets.length > 0) {
-        const file = result.assets[0];
         setIsShowOptions(false);
-        
-        await handleFileUpload(file.uri, 'file', {
-          fileName: file.name,
-          fileSize: file.size,
-          fileType: file.mimeType
-        });
+        const { uri, name, mimeType, size } = result.assets[0];
+        await handleSendMedia("file", uri, name, mimeType || "application/octet-stream", size || 0);
       }
     } catch (error) {
-      console.error('Error picking document:', error);
+      console.error("Error picking document:", error);
+      Alert.alert("Lỗi", "Không thể chọn tài liệu.");
     }
   };
 
   // Message long press handler
   const onLongPress = (context, message) => {
-    if (message.user._id === user._id) {
-      Alert.alert(
-        "Tùy chọn tin nhắn",
-        "Chọn chức năng",
-        [
-          {
-            text: "Thu hồi tin nhắn",
-            onPress: () => handleRevokeMessage(message._id),
-          },
-          {
-            text: "Xóa tin nhắn",
-            onPress: () => handleDeleteLocalMessage(message._id),
-            style: "destructive"
-          },
-          {
-            text: "Hủy",
-            style: "cancel",
-          },
-        ],
-        { cancelable: true }
-      );
-    } else {
-      Alert.alert(
-        "Tùy chọn tin nhắn",
-        "Chọn chức năng",
-        [
-          {
-            text: "Xóa tin nhắn",
-            onPress: () => handleDeleteLocalMessage(message._id),
-            style: "destructive"
-          },
-          {
-            text: "Hủy",
-            style: "cancel",
-          },
-        ],
-        { cancelable: true }
-      );
-    }
+    const options = message.user._id === user._id
+      ? [
+          { text: "Thu hồi tin nhắn", onPress: () => handleRevokeMessage(message._id) },
+          { text: "Xóa tin nhắn", onPress: () => handleDeleteLocalMessage(message._id), style: "destructive" },
+          { text: "Hủy", style: "cancel" },
+        ]
+      : [
+          { text: "Xóa tin nhắn", onPress: () => handleDeleteLocalMessage(message._id), style: "destructive" },
+          { text: "Hủy", style: "cancel" },
+        ];
+
+    Alert.alert("Tùy chọn tin nhắn", "Chọn chức năng", options, { cancelable: true });
   };
 
   // Revoke message
   const handleRevokeMessage = async (messageId) => {
     try {
       const response = await revokeMessage(messageId);
-      
-      if (response.data.status === 'success') {
-        setMessages(prevMessages => 
-          prevMessages.map(msg => 
-            msg._id === messageId 
-              ? { ...msg, text: "Tin nhắn đã được thu hồi", revoked: true } 
+      if (response.data.status === "success") {
+        setMessages((prevMessages) =>
+          prevMessages.map((msg) =>
+            msg._id === messageId
+              ? { ...msg, text: "Tin nhắn đã được thu hồi", revoked: true }
               : msg
           )
         );
-        
         if (socketRef.current) {
-          socketRef.current.emit('revokeMessage', { 
-            messageId, 
-            userId: user._id,
-            groupId
-          });
+          socketRef.current.emit("revokeMessage", { messageId, userId: user._id, groupId });
         }
       }
     } catch (error) {
-      console.error('Error revoking message:', error);
-      Alert.alert('Lỗi', 'Không thể thu hồi tin nhắn');
+      console.error("Error revoking message:", error);
+      Alert.alert("Lỗi", "Không thể thu hồi tin nhắn.");
     }
   };
 
   // Delete message locally
   const handleDeleteLocalMessage = (messageId) => {
-    setDeletedMessageIds(prev => [...prev, messageId]);
-    setMessages(prevMessages => prevMessages.filter(msg => msg._id !== messageId));
+    setDeletedMessageIds((prev) => [...prev, messageId]);
+    setMessages((prevMessages) => prevMessages.filter((msg) => msg._id !== messageId));
     storeDeletedMessageIds([...deletedMessageIds, messageId]);
   };
 
@@ -536,7 +579,7 @@ const GroupChatDetail = () => {
       const key = `deleted_group_messages_${groupId}_${user._id}`;
       await AsyncStorage.setItem(key, JSON.stringify(ids));
     } catch (error) {
-      console.error('Error storing deleted message IDs:', error);
+      console.error("Error storing deleted message IDs:", error);
     }
   };
 
@@ -549,7 +592,7 @@ const GroupChatDetail = () => {
         setDeletedMessageIds(JSON.parse(storedIds));
       }
     } catch (error) {
-      console.error('Error loading deleted message IDs:', error);
+      console.error("Error loading deleted message IDs:", error);
     }
   };
 
@@ -560,39 +603,36 @@ const GroupChatDetail = () => {
       if (supported) {
         await Linking.openURL(url);
       } else {
-        Alert.alert('Lỗi', 'Không thể mở nội dung này');
+        Alert.alert("Lỗi", "Không thể mở nội dung này.");
       }
     } catch (error) {
-      console.error('Error opening file:', error);
-      Alert.alert('Lỗi', 'Không thể mở nội dung: ' + error.message);
+      console.error("Error opening file:", error);
+      Alert.alert("Lỗi", `Không thể mở nội dung: ${error.message}`);
     }
   };
 
   // Format file size
   const formatFileSize = (bytes) => {
-    if (!bytes || isNaN(bytes)) return '0 B';
+    if (!bytes || isNaN(bytes)) return "0 B";
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const sizes = ["B", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
   // Render bubble
   const renderBubble = (props) => {
     const { currentMessage } = props;
-  
+
     if (currentMessage.revoked) {
       return (
         <Bubble
           {...props}
-          wrapperStyle={{
-            right: { backgroundColor: '#ccc' },
-            left: { backgroundColor: '#ccc' }
-          }}
+          wrapperStyle={{ right: { backgroundColor: "#ccc" }, left: { backgroundColor: "#ccc" } }}
         />
       );
     }
-  
+
     if (currentMessage.image) {
       return (
         <View
@@ -602,10 +642,7 @@ const GroupChatDetail = () => {
           ]}
         >
           <TouchableOpacity onPress={() => handleFileOpen(currentMessage.image)}>
-            <Image
-              source={{ uri: currentMessage.image }}
-              style={styles.media}
-            />
+            <Image source={{ uri: currentMessage.image }} style={styles.media} />
           </TouchableOpacity>
         </View>
       );
@@ -616,16 +653,9 @@ const GroupChatDetail = () => {
         <View style={{ padding: 10 }}>
           <Video
             source={{ uri: currentMessage.video }}
-            loop={false}
-            autoPlay={false}
-            controls
-            rate={1.0}
-            volume={1.0}
-            isMuted={false}
-            resizeMode="contain"
-            shouldPlay={false}
-            useNativeControls
             style={{ width: 180, height: 180, borderRadius: 10 }}
+            controls
+            resizeMode="contain"
           />
         </View>
       );
@@ -645,27 +675,19 @@ const GroupChatDetail = () => {
               <Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">
                 {currentMessage.file.file_name}
               </Text>
-              <Text style={styles.fileSize}>
-                {formatFileSize(currentMessage.file.file_size)}
-              </Text>
+              <Text style={styles.fileSize}>{formatFileSize(currentMessage.file.file_size)}</Text>
             </View>
             <Ionicons name="open-outline" size={24} color="#0084ff" />
           </TouchableOpacity>
         </View>
       );
     }
-  
+
     return (
       <Bubble
         {...props}
-        wrapperStyle={{
-          right: { backgroundColor: '#0084ff' },
-          left: { backgroundColor: '#f0f0f0' },
-        }}
-        textStyle={{
-          right: { color: '#fff' },
-          left: { color: '#333' },
-        }}
+        wrapperStyle={{ right: { backgroundColor: "#0084ff" }, left: { backgroundColor: "#f0f0f0" } }}
+        textStyle={{ right: { color: "#fff" }, left: { color: "#333" } }}
       />
     );
   };
@@ -677,28 +699,20 @@ const GroupChatDetail = () => {
         <TouchableOpacity style={styles.optionButton} onPress={() => setIsShowOptions(!isShowOptions)}>
           <Ionicons name="add-circle-outline" size={24} color="#0084ff" />
         </TouchableOpacity>
-        
         <TouchableOpacity style={styles.optionButton} onPress={handleCameraCapture}>
           <Ionicons name="camera-outline" size={24} color="#0084ff" />
         </TouchableOpacity>
-        
         <TouchableOpacity style={styles.optionButton} onPress={handleImagePick}>
           <Ionicons name="image-outline" size={24} color="#0084ff" />
         </TouchableOpacity>
-        
         <TouchableOpacity style={styles.optionButton} onPress={handleVideoPick}>
           <Ionicons name="videocam-outline" size={24} color="#0084ff" />
         </TouchableOpacity>
-
         <InputToolbar
           {...props}
           containerStyle={styles.inputToolbar}
           renderComposer={(composerProps) => (
-            <Composer
-              {...composerProps}
-              textInputStyle={styles.composer}
-              placeholder="Tin nhắn"
-            />
+            <Composer {...composerProps} textInputStyle={styles.composer} placeholder="Tin nhắn" />
           )}
           renderSend={(sendProps) => (
             <Send {...sendProps} containerStyle={styles.sendContainer}>
@@ -712,53 +726,50 @@ const GroupChatDetail = () => {
 
   // Render header
   const renderHeader = () => {
-    // Ensure we have valid data before rendering
-    if (!groupId) return null;
+    const isAdmin = groupInfo?.creator_id === user._id || members.some((m) => m.user_id === user._id && m.role === "admin");
     return (
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={() => navigation.goBack()}
-        >
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
-        
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.userInfo}
-          onPress={() => navigation.navigate('GroupInfo', { 
-            groupId, 
-            groupName, 
-            groupAvatar,
-            members,
-            isAdmin: groupInfo?.creator_id === user._id
-          })}
+          onPress={() =>
+            navigation.navigate("GroupInfo", {
+              groupId,
+              groupName: groupInfo?.name || groupName || "Group Chat",
+              groupAvatar: groupInfo?.avatar || groupAvatar,
+              members: members || [],
+              isAdmin,
+            })
+          }
         >
-          {groupAvatar ? (
-            <Image source={{ uri: groupAvatar }} style={styles.avatar} />
+          {groupInfo?.avatar || groupAvatar ? (
+            <Image source={{ uri: groupInfo?.avatar || groupAvatar }} style={styles.avatar} />
           ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]}>
-              <Text style={styles.avatarText}>{groupName ? groupName.charAt(0) : 'G'}</Text>
+              <Text style={styles.avatarText}>
+                {(groupInfo?.name || groupName || "G").charAt(0)}
+              </Text>
             </View>
           )}
-          
           <View style={styles.headerInfo}>
-            <Text style={styles.headerName}>{groupName || 'Group Chat'}</Text>
-            <Text style={styles.headerStatus}>
-              {members?.length || 0} thành viên
-            </Text>
+            <Text style={styles.headerName}>{groupInfo?.name || groupName || "Group Chat"}</Text>
+            <Text style={styles.headerStatus}>{members?.length || 0} thành viên</Text>
           </View>
         </TouchableOpacity>
-        
         <View style={styles.headerActions}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => navigation.navigate('GroupInfo', { 
-              groupId, 
-              groupName, 
-              groupAvatar,
-              members,
-              isAdmin: groupInfo?.creator_id === user._id
-            })}
+            onPress={() =>
+              navigation.navigate("GroupInfo", {
+                groupId,
+                groupName: groupInfo?.name || groupName || "Group Chat",
+                groupAvatar: groupInfo?.avatar || groupAvatar,
+                members: members || [],
+                isAdmin,
+              })
+            }
           >
             <Ionicons name="information-circle-outline" size={24} color="#000" />
           </TouchableOpacity>
@@ -770,32 +781,28 @@ const GroupChatDetail = () => {
   // Options menu
   const renderOptionsMenu = () => {
     if (!isShowOptions) return null;
-    
     return (
       <View style={styles.optionsContainer}>
         <TouchableOpacity style={styles.optionItem} onPress={handleImagePick}>
-          <View style={[styles.optionIcon, { backgroundColor: '#FF6B6B' }]}>
+          <View style={[styles.optionIcon, { backgroundColor: "#FF6B6B" }]}>
             <Ionicons name="images" size={24} color="#fff" />
           </View>
           <Text style={styles.optionText}>Hình ảnh</Text>
         </TouchableOpacity>
-        
         <TouchableOpacity style={styles.optionItem} onPress={handleCameraCapture}>
-          <View style={[styles.optionIcon, { backgroundColor: '#FFA06B' }]}>
+          <View style={[styles.optionIcon, { backgroundColor: "#FFA06B" }]}>
             <Ionicons name="camera" size={24} color="#fff" />
           </View>
           <Text style={styles.optionText}>Chụp ảnh</Text>
         </TouchableOpacity>
-        
         <TouchableOpacity style={styles.optionItem} onPress={handleVideoPick}>
-          <View style={[styles.optionIcon, { backgroundColor: '#45B7D1' }]}>
+          <View style={[styles.optionIcon, { backgroundColor: "#45B7D1" }]}>
             <Ionicons name="videocam" size={24} color="#fff" />
           </View>
           <Text style={styles.optionText}>Video</Text>
         </TouchableOpacity>
-        
         <TouchableOpacity style={styles.optionItem} onPress={handleDocumentPick}>
-          <View style={[styles.optionIcon, { backgroundColor: '#4ECDC4' }]}>
+          <View style={[styles.optionIcon, { backgroundColor: "#4ECDC4" }]}>
             <Ionicons name="document" size={24} color="#fff" />
           </View>
           <Text style={styles.optionText}>File</Text>
@@ -807,211 +814,104 @@ const GroupChatDetail = () => {
   return (
     <View style={styles.container}>
       {renderHeader()}
-      
-      <GiftedChat
-        messages={messages}
-        onSend={onSend}
-        user={{
-          _id: user._id,
-          name: user.name,
-          avatar: user.avatar
-        }}
-        renderBubble={renderBubble}
-        renderInputToolbar={renderInputToolbar}
-        renderAvatar={null}
-        alwaysShowSend
-        scrollToBottom
-        infiniteScroll
-        inverted={true}
-        onLongPress={onLongPress}
-        renderLoading={() => <ActivityIndicator size="large" color="#0084ff" />}
-        placeholder="Nhập tin nhắn..."
-      />
-      
+      {loading ? (
+        <ActivityIndicator size="large" color="#0084ff" style={{ flex: 1 }} />
+      ) : (
+        <GiftedChat
+          messages={messages}
+          onSend={onSend}
+          user={{ _id: user._id, name: user.name, avatar: user.avatar }}
+          renderBubble={renderBubble}
+          renderInputToolbar={renderInputToolbar}
+          renderAvatar={null}
+          alwaysShowSend
+          scrollToBottom
+          infiniteScroll
+          inverted
+          onLongPress={onLongPress}
+          placeholder="Nhập tin nhắn..."
+        />
+      )}
       {renderOptionsMenu()}
     </View>
   );
 };
 
+// Styles (giữ nguyên)
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
+  container: { flex: 1, backgroundColor: "#fff" },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 10,
-    backgroundColor: '#fff',
-    marginTop: Platform.OS === 'ios' ? 40 : 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: "#eee",
   },
-  backButton: {
-    padding: 5,
-  },
-  userInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 10,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-  },
+  backButton: { padding: 5 },
+  userInfo: { flex: 1, flexDirection: "row", alignItems: "center" },
+  avatar: { width: 40, height: 40, borderRadius: 20, marginRight: 10 },
   avatarPlaceholder: {
-    backgroundColor: '#4E7DFF',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#0084ff",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  avatarText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 18,
-  },
-  headerInfo: {
-    marginLeft: 10,
-  },
-  headerName: {
-    fontWeight: "600",
-    fontSize: 16,
-  },
-  headerStatus: {
-    color: "#8E8E93",
-    fontSize: 12,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  actionButton: {
-    padding: 8,
-    marginLeft: 5,
-  },
+  avatarText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
+  headerInfo: { flex: 1 },
+  headerName: { fontSize: 16, fontWeight: "bold" },
+  headerStatus: { fontSize: 12, color: "#666" },
+  headerActions: { flexDirection: "row" },
+  actionButton: { padding: 5 },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
     paddingVertical: 5,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
+    backgroundColor: "#fff",
   },
-  optionButton: {
-    padding: 8,
-  },
-  inputToolbar: {
-    flex: 1,
-    backgroundColor: '#f8f8f8',
-    borderRadius: 20,
-    borderTopWidth: 0,
-    marginRight: 5,
-  },
-  composer: {
-    backgroundColor: 'transparent',
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    marginLeft: 0,
-    marginTop: 5,
-    marginBottom: 15,
-  },
-  sendContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 5,
-    marginBottom: 5,
-  },
-  optionsContainer: {
-    position: 'absolute',
-    bottom: 60,
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    padding: 15,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  optionItem: {
-    alignItems: 'center',
-  },
-  optionIcon: {
-    width: 45,
-    height: 45,
-    borderRadius: 23,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 5,
-  },
-  optionText: {
-    fontSize: 12,
-    color: '#666',
-  },
-  mediaBubble: {
-    padding: 3,
-    borderRadius: 15,
-    marginBottom: 10,
-    maxWidth: 250,
-  },
-  mediaBubbleRight: {
-    backgroundColor: '#0084ff',
-    marginLeft: 60,
-    alignSelf: 'flex-end',
-  },
-  mediaBubbleLeft: {
-    backgroundColor: '#f1f0f0',
-    marginRight: 60,
-    alignSelf: 'flex-start',
-  },
-  media: {
-    width: 200,
-    height: 150,
-    borderRadius: 13,
-  },
-  fileBubble: {
-    padding: 5,
-    maxWidth: 280,
-    borderRadius: 15,
-    marginBottom: 10,
-  },
+  optionButton: { padding: 5 },
+  inputToolbar: { flex: 1, borderWidth: 1, borderColor: "#ddd", borderRadius: 20, marginRight: 5 },
+  composer: { paddingHorizontal: 10 },
+  sendContainer: { justifyContent: "center", paddingRight: 10 },
+  mediaBubble: { padding: 10 },
+  mediaBubbleRight: { alignItems: "flex-end" },
+  mediaBubbleLeft: { alignItems: "flex-start" },
+  media: { width: 200, height: 200, borderRadius: 10 },
+  fileBubble: { padding: 10 },
   fileContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0f0f0',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f0f0f0",
     borderRadius: 10,
     padding: 10,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
+    maxWidth: 250,
   },
   fileIconContainer: {
+    backgroundColor: "#0084ff",
+    borderRadius: 5,
+    padding: 5,
+    marginRight: 10,
+  },
+  fileInfo: { flex: 1 },
+  fileName: { fontSize: 14, color: "#333" },
+  fileSize: { fontSize: 12, color: "#666" },
+  optionsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    padding: 10,
+    backgroundColor: "#f9f9f9",
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+  },
+  optionItem: { alignItems: "center" },
+  optionIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#0084ff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 5,
   },
-  fileInfo: {
-    flex: 1,
-    marginRight: 10,
-  },
-  fileName: {
-    fontWeight: '500',
-    fontSize: 14,
-    color: '#333',
-  },
-  fileSize: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 2,
-  },
+  optionText: { fontSize: 12, color: "#333" },
 });
 
 export default GroupChatDetail;

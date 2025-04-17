@@ -220,8 +220,8 @@ const Home = () => {
 
     // Handle group conversations
     if (item.type === "group") {
-      const groupId = item._group_id || item._id;
-      const isGroupIdValid = !!item._group_id;
+
+      console.log("Group conversation data:", item);
 
       return (
         <TouchableOpacity
@@ -229,10 +229,12 @@ const Home = () => {
           onPress={async () => {
             await markConversationAsRead(item._id, item.last_message?._id);
             navigation.navigate("GroupChatDetail", {
-              groupId: groupId,
-              name: item.name,
-              avatar: item.avatar,
-              isGroupIdValid: isGroupIdValid,
+              groupId: item.group_id || item._id,
+              groupName: item.name || "Group Chat",
+              groupAvatar: item.avatar || null,
+              // Pass additional data that might be needed
+              members: item.members || [],
+              isAdmin: item.creator_id === user._id
             });
           }}
         >
