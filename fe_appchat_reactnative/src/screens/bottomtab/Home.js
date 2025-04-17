@@ -1,5 +1,4 @@
-import React, {useRef, useState, useEffect, useContext } from "react";
-import { useRoute, useNavigation } from "@react-navigation/native";
+import React, { useRef, useState, useEffect, useContext, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,26 +8,30 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import MainLayout from "../../components/MainLayout";
 import { AuthContext } from "../../contexts/AuthContext";
 import { getConversations } from "../../services/chatService";
-import { initializeSocket, emitMessage, subscribeToMessages } from "../../services/socketService";
-import { useFocusEffect } from "@react-navigation/native";
-import { useCallback } from "react";
+import {
+  initializeSocket,
+  subscribeToMessages,
+  subscribeToAllGroupEvents,
+} from "../../services/socketService";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 
 const Home = () => {
+  const navigation = useNavigation();
+  const { searchUsersByQuery, searchResults, user } = useContext(AuthContext);
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const navigation = useNavigation();
-  const { searchUsersByQuery, searchResults } = useContext(AuthContext);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [displayData, setDisplayData] = useState([]);
-  const { user } = useContext(AuthContext);
   const socketRef = useRef(null);
 
+  // Fetch conversations from API
   const fetchConversations = useCallback(async () => {
     try {
       setLoading(true);
@@ -36,213 +39,177 @@ const Home = () => {
       console.log("Fetched conversations:", response);
       if (response.status === "success") {
         const readMap = await getReadMessageMap();
+
+        // Process conversations
         const updatedList = response.data.map((item) => {
           const lastMsgId = item.last_message?._id;
           const readMsgId = readMap[item._id];
-  
           const isUnread = lastMsgId && lastMsgId !== readMsgId;
-          return {
-            ...item,
-            isUnread,
-          };
+
+          return { ...item, isUnread };
         });
-  
-        // Sắp xếp: chưa đọc lên đầu, rồi theo updated_at
+
+        // Sort: unread first, then by updated_at
         const sorted = updatedList.sort((a, b) => {
           if (a.isUnread && !b.isUnread) return -1;
           if (!a.isUnread && b.isUnread) return 1;
           return new Date(b.updated_at) - new Date(a.updated_at);
         });
-  
+
         setConversations(sorted);
       }
     } catch (error) {
       console.error("Error fetching conversations:", error);
+      Alert.alert("Lỗi", "Không thể tải danh sách cuộc trò chuyện: " + error.message);
     } finally {
       setLoading(false);
     }
   }, []);
-  useEffect(() => {
-    const setupSocket = async () => {
-      const socketInstance = await initializeSocket();
-      socketRef.current = socketInstance;
-  
-      if (socketInstance) {
-        socketInstance.on("receiveMessage", () => {
-          fetchConversations(); // Đảm bảo đây là callback mới
-        });
-      }
-    };
-  
-    setupSocket();
-  
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.off("receiveMessage");
-      }
-    };
-  }, [fetchConversations]); // <== Add dependency
-  
-  useEffect(() => {
-    fetchConversations();
-  }, [fetchConversations]);
+
+  // Mark a conversation as read
   const markConversationAsRead = async (conversationId, messageId) => {
+    if (!messageId) return;
     const stored = await AsyncStorage.getItem("readMessages");
     const parsed = stored ? JSON.parse(stored) : {};
     parsed[conversationId] = messageId;
     await AsyncStorage.setItem("readMessages", JSON.stringify(parsed));
   };
-  useFocusEffect(
-    useCallback(() => {
-      fetchConversations();
-    }, [fetchConversations])
-  );
 
-  useFocusEffect(
-    useCallback(() => {
-      console.log("Home screen focused - setting up socket listener");
-  
-      const setupSocket = async () => {
-        const socketInstance = await initializeSocket();
-        socketRef.current = socketInstance;
-  
-        if (socketInstance) {
-          // Clear old listener to avoid duplicates
-          socketInstance.off("receiveMessage");
-  
-          socketInstance.on("receiveMessage", (data) => {
-            console.log("New message received in Home screen:", data);
-            fetchConversations();
-          });
-        }
-      };
-  
-      setupSocket();
-  
-      return () => {
-        console.log("Home screen unfocused - cleaning up socket listener");
-        if (socketRef.current) {
-          socketRef.current.off("receiveMessage");
-        }
-      };
-    }, [fetchConversations])
-  );
-  
+  // Get read message map from AsyncStorage
+  const getReadMessageMap = async () => {
+    const stored = await AsyncStorage.getItem("readMessages");
+    return stored ? JSON.parse(stored) : {};
+  };
 
+  // Handle search input
   const handleSearch = async (text) => {
     setSearchQuery(text);
-    if (text.trim() === '') {
+    if (text.trim() === "") {
       setDisplayData([]);
       return;
     }
 
     try {
       await searchUsersByQuery(text);
-      const formattedResults = searchResults.map(user => ({
+      const formattedResults = searchResults.map((user) => ({
         id: user._id,
         name: user.name,
-        message: user.phone || '', 
+        message: user.phone || "",
         time: "Now",
         unread: 0,
-        avatar: user.primary_avatar || '',
-        isSearchResult: true // Add flag to identify search results
+        avatar: user.primary_avatar || "",
+        isSearchResult: true,
       }));
       setDisplayData(formattedResults);
     } catch (error) {
-      console.error('Search error:', error);
+      console.error("Search error:", error);
+      Alert.alert("Lỗi", "Không thể tìm kiếm người dùng: " + error.message);
     }
   };
-  
-  
-  
-  const getReadMessageMap = async () => {
-    const stored = await AsyncStorage.getItem("readMessages");
-    return stored ? JSON.parse(stored) : {};
-  };
 
- 
-
-  // First, let's fix the fetchConversations dependency issue by using useCallback
-   // Remove any dependencies to avoid circular dependencies
-
-  // Now improve the socket connection setup
+  // Socket setup
   useEffect(() => {
-    console.log("Setting up socket connection for Home screen");
-    
     const setupSocket = async () => {
       const socketInstance = await initializeSocket();
       socketRef.current = socketInstance;
-  
+
       if (socketInstance) {
-        // Remove any existing listeners to prevent duplicates
-        socketInstance.off("receiveMessage");
-        
-        // Add the new listener
-        socketInstance.on("receiveMessage", (data) => {
+        // Subscribe to messages
+        const unsubscribeMessages = subscribeToMessages((data) => {
           console.log("New message received in Home screen:", data);
-          // Immediately fetch conversations to update the list
           fetchConversations();
         });
+
+        // Subscribe to group events
+        const unsubscribeGroupEvents = subscribeToAllGroupEvents({
+          onNewGroupCreated: (data) => {
+            console.log("New group created:", data);
+            fetchConversations();
+          },
+          onAddedToGroup: (data) => {
+            console.log("Added to group:", data);
+            fetchConversations();
+          },
+          onRemovedFromGroup: (data) => {
+            console.log("Removed from group:", data);
+            fetchConversations();
+          },
+          onGroupUpdated: (data) => {
+            console.log("Group updated:", data);
+            fetchConversations();
+          },
+        });
+
+        return () => {
+          console.log("Cleaning up socket connection in Home screen");
+          if (unsubscribeMessages) unsubscribeMessages();
+          if (unsubscribeGroupEvents) unsubscribeGroupEvents();
+        };
       }
     };
-  
+
     setupSocket();
-  
+
     return () => {
-      console.log("Cleaning up socket connection in Home screen");
       if (socketRef.current) {
         socketRef.current.off("receiveMessage");
+        console.log("Cleaning up socket connection in Home screen");
       }
     };
-  }, [fetchConversations]); // Remove fetchConversations dependency to avoid circular references
-  
-  // Keep your initial fetch
-  useEffect(() => {
-    fetchConversations();
   }, [fetchConversations]);
-  
-  // Add a separate effect for message subscription
-  // useEffect(() => {
-  //   console.log("Setting up message subscription in Home screen");
-    
-  //   // Subscribe to messages using the service function
-  //   const unsubscribe = subscribeToMessages((data) => {
-  //     console.log("Message subscription received data:", data);
-  //     fetchConversations();
-  //   });
-    
-  //   return () => {
-  //     console.log("Cleaning up message subscription in Home screen");
-  //     if (unsubscribe) unsubscribe();
-  //   };
-  // }, [fetchConversations]);
+
+  // Fetch conversations when the screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      fetchConversations();
+    }, [fetchConversations])
+  );
+
+  // Format timestamp for display
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = (now - date) / 1000; // Difference in seconds
+
+    if (diff < 60) return "Vừa xong";
+    if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)} ngày trước`;
+    return date.toLocaleDateString("vi-VN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  };
+
+  // Render each item in the FlatList
   const renderItem = ({ item }) => {
-    // Handle search result items differently
+    // Handle search result items
     if (item.isSearchResult) {
       return (
         <TouchableOpacity
           style={styles.chatItem}
-          onPress={() => navigation.navigate("AddFriendConfirmation", { userData: {
-            id: item.id,
-            name: item.name,
-            phone: item.message,
-            avatar: item.avatar
-          }})}
+          onPress={() =>
+            navigation.navigate("AddFriendConfirmation", {
+              userData: {
+                id: item.id,
+                name: item.name,
+                phone: item.message,
+                avatar: item.avatar,
+              },
+            })
+          }
         >
           {item.avatar ? (
-            <Image
-              source={{ uri: item.avatar }}
-              style={styles.avatar}
-            />
+            <Image source={{ uri: item.avatar }} style={styles.avatar} />
           ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]}>
-              <Text style={styles.avatarText}>
-                {item.name.charAt(0)}
-              </Text>
+              <Text style={styles.avatarText}>{item.name?.charAt(0) || "?"}</Text>
             </View>
           )}
           <View style={styles.chatContent}>
-            <Text style={styles.chatName}>{item.name}</Text>
+            <Text style={styles.chatName}>{item.name || "Unknown"}</Text>
             <Text style={styles.chatMessage}>
               {item.message || "Người dùng mới"}
             </Text>
@@ -251,28 +218,91 @@ const Home = () => {
       );
     }
 
-    // Original conversation rendering
-    const otherParticipant = item.participants.find(
+    // Handle group conversations
+    if (item.type === "group") {
+      const groupId = item._group_id || item._id;
+      const isGroupIdValid = !!item._group_id;
+
+      return (
+        <TouchableOpacity
+          style={styles.chatItem}
+          onPress={async () => {
+            await markConversationAsRead(item._id, item.last_message?._id);
+            navigation.navigate("GroupChatDetail", {
+              groupId: groupId,
+              name: item.name,
+              avatar: item.avatar,
+              isGroupIdValid: isGroupIdValid,
+            });
+          }}
+        >
+          {item.avatar ? (
+            <Image source={{ uri: item.avatar }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatar, styles.avatarPlaceholder]}>
+              <Text style={styles.avatarText}>{item.name?.charAt(0) || "G"}</Text>
+            </View>
+          )}
+          <View style={styles.chatContent}>
+            <Text style={styles.chatName}>{item.name || "Unnamed Group"}</Text>
+            <Text
+              style={[
+                styles.chatMessage,
+                item.isUnread ? { fontWeight: "bold", color: "#000" } : {},
+              ]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {item.last_message
+                ? item.last_message.content
+                : "Bắt đầu cuộc trò chuyện"}
+            </Text>
+          </View>
+          <View style={styles.chatMeta}>
+            <Text style={styles.chatTime}>
+              {formatTimestamp(item.updated_at)}
+            </Text>
+            {item.isUnread && <View style={styles.unreadDot} />}
+          </View>
+        </TouchableOpacity>
+      );
+    }
+
+    // Handle 1-1 conversations
+    const otherParticipant = item.participants?.find(
       (p) => p.user_id !== user._id
     );
+
+    if (!otherParticipant) {
+      return (
+        <View style={styles.chatItem}>
+          <View style={[styles.avatar, styles.avatarPlaceholder]}>
+            <Text style={styles.avatarText}>?</Text>
+          </View>
+          <View style={styles.chatContent}>
+            <Text style={styles.chatName}>Cuộc trò chuyện không xác định</Text>
+            <Text style={styles.chatMessage}>
+              Không thể tải thông tin người dùng
+            </Text>
+          </View>
+        </View>
+      );
+    }
 
     return (
       <TouchableOpacity
         style={styles.chatItem}
-        // In renderItem function
         onPress={async () => {
           await markConversationAsRead(item._id, item.last_message?._id);
           navigation.navigate("ChatDetail", {
             conversationId: item._id,
-            name: otherParticipant.name,
-            avatar: otherParticipant.primary_avatar,
-            receiverId: otherParticipant.user_id
+            name: otherParticipant.name || "Unknown",
+            avatar: otherParticipant.primary_avatar || null,
+            receiverId: otherParticipant.user_id,
           });
         }}
-        
       >
         {otherParticipant.primary_avatar ? (
-          // console.log("Avatar URL:", otherParticipant.primary_avatar),
           <Image
             source={{ uri: otherParticipant.primary_avatar }}
             style={styles.avatar}
@@ -280,29 +310,36 @@ const Home = () => {
         ) : (
           <View style={[styles.avatar, styles.avatarPlaceholder]}>
             <Text style={styles.avatarText}>
-              {otherParticipant.name.charAt(0)}
+              {otherParticipant.name?.charAt(0) || "?"}
             </Text>
           </View>
         )}
         <View style={styles.chatContent}>
-          <Text style={styles.chatName}>{otherParticipant.name}</Text>
+          <Text style={styles.chatName}>{otherParticipant.name || "Unknown"}</Text>
           <Text
             style={[
               styles.chatMessage,
               item.isUnread ? { fontWeight: "bold", color: "#000" } : {},
             ]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
           >
             {item.last_message
               ? item.last_message.content
               : "Bắt đầu cuộc trò chuyện"}
           </Text>
-
+        </View>
+        <View style={styles.chatMeta}>
+          <Text style={styles.chatTime}>
+            {formatTimestamp(item.updated_at)}
+          </Text>
+          {item.isUnread && <View style={styles.unreadDot} />}
         </View>
       </TouchableOpacity>
     );
   };
 
-  if (loading) {
+  if (loading && !searchQuery) {
     return (
       <MainLayout>
         <View style={[styles.container, styles.loadingContainer]}>
@@ -346,10 +383,19 @@ const Home = () => {
         </View>
 
         <FlatList
-          data={searchQuery.trim() !== '' ? displayData : conversations}
+          data={searchQuery.trim() !== "" ? displayData : conversations}
           keyExtractor={(item) => item.id || item._id}
           renderItem={renderItem}
           style={styles.chatList}
+          ListEmptyComponent={() => (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>
+                {searchQuery.trim() !== ""
+                  ? "Không tìm thấy người dùng"
+                  : "Chưa có cuộc trò chuyện nào"}
+              </Text>
+            </View>
+          )}
           refreshing={loading}
           onRefresh={fetchConversations}
         />
@@ -376,6 +422,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: "#fff",
     marginLeft: 10,
+    fontSize: 16,
   },
   tabs: {
     flexDirection: "row",
@@ -386,9 +433,11 @@ const styles = StyleSheet.create({
   activeTab: {
     fontWeight: "bold",
     color: "#000",
+    fontSize: 16,
   },
   inactiveTab: {
     color: "#8E8E93",
+    fontSize: 16,
   },
   chatList: {
     paddingHorizontal: 15,
@@ -414,19 +463,48 @@ const styles = StyleSheet.create({
   avatarText: {
     color: "#fff",
     fontWeight: "bold",
+    fontSize: 18,
   },
   chatContent: {
     flex: 1,
   },
   chatName: {
     fontWeight: "bold",
+    fontSize: 16,
+    marginBottom: 5,
   },
   chatMessage: {
     color: "#8E8E93",
+    fontSize: 14,
+  },
+  chatMeta: {
+    alignItems: "flex-end",
+  },
+  chatTime: {
+    color: "#8E8E93",
+    fontSize: 12,
+    marginBottom: 5,
+  },
+  unreadDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#4E7DFF",
   },
   loadingContainer: {
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "#666",
   },
 });
 

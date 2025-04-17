@@ -275,6 +275,15 @@ const AddFriend = ({ navigation, route }) => {
           <Ionicons name="scan-outline" size={24} color="#1a75ff" />
           <Text style={styles.optionText}>Quét mã QR</Text>
         </TouchableOpacity>
+        
+        {/* Thêm tùy chọn Tạo nhóm */}
+        <TouchableOpacity 
+          style={styles.option} 
+          onPress={() => navigation.navigate("CreateGroup")}
+        >
+          <Ionicons name="people" size={24} color="#1a75ff" />
+          <Text style={styles.optionText}>Tạo nhóm</Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );

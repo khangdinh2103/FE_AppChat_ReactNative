@@ -17,6 +17,11 @@ import AddFriendConfirmation from "./src/screens/contacts/AddFriendConfirmation"
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { AuthProvider } from "./src/contexts/AuthContext";
+// Import các màn hình liên quan đến nhóm
+import CreateGroup from "./src/screens/chat/CreateGroup";
+import GroupChatDetail from "./src/screens/chat/GroupChatDetail";
+import GroupInfo from "./src/screens/chat/GroupInfo";
+
 const Stack = createNativeStackNavigator();
 
 export default function App() {
@@ -84,6 +89,23 @@ export default function App() {
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="EditProfile" component={EditProfile} />
           <Stack.Screen name="QRScanner" component={QRScanner} />
+          
+          {/* Thêm các màn hình liên quan đến nhóm */}
+          <Stack.Screen 
+            name="CreateGroup" 
+            component={CreateGroup} 
+            options={{ headerShown: false }} 
+          />
+          <Stack.Screen 
+            name="GroupChatDetail" 
+            component={GroupChatDetail} 
+            options={{ headerShown: false }} 
+          />
+          <Stack.Screen 
+            name="GroupInfo" 
+            component={GroupInfo} 
+            options={{ headerShown: false }} 
+          />
         </Stack.Navigator>
       </NavigationContainer>
     </AuthProvider>
