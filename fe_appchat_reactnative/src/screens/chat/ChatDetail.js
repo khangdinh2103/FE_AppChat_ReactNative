@@ -600,7 +600,7 @@ const ChatDetail = () => {
           <Image
             source={{ uri: currentMessage.image }}
             style={styles.media}
-            resizeMode="cover"
+            // resizeMode="cover"
           />
         </TouchableOpacity>
       </View>
