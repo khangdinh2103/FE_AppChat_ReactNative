@@ -1,8 +1,23 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const API_URL = "http://192.168.1.45:5000/api/group";
+const API_URL = "http://192.168.1.46:5000";
+const groupApi = axios.create({
+  baseURL: API_URL,
+});
 
+// Set up request interceptor to add token
+export const setupGroupInterceptor = (token) => {
+  groupApi.interceptors.request.use(
+    (config) => {
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    },
+    (error) => Promise.reject(error)
+  );
+};
 // Create a new group
 export const createGroup = async (groupData) => {
   try {
@@ -41,42 +56,31 @@ export const createGroup = async (groupData) => {
 // Get group details
 export const getGroupDetails = async (groupId) => {
   try {
-    const token = await AsyncStorage.getItem("accessToken");
-    
+    const token = await AsyncStorage.getItem('accessToken');
     if (!token) {
-      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
+      throw new Error('Không tìm thấy token. Vui lòng đăng nhập lại.');
     }
-    
-    const response = await axios.get(`${API_URL}/${groupId}`, {
+    if (!groupId || typeof groupId !== 'string') {
+      throw new Error('groupId không hợp lệ.');
+    }
+
+    const response = await groupApi.get(`/api/group/${groupId}`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     });
-    
-    if (response.data.status === "success") {
-      const groupData = response.data.data;
-      return {
-        ...groupData,
-        name: groupData.name || "Unnamed Group",
-        avatar: groupData.avatar || null,
-        description: groupData.description || "",
-        members: (groupData.members || []).map(member => ({
-          user_id: member.user?._id || "",
-          name: member.user?.name || "Unknown",
-          avatar: member.user?.primary_avatar || null,
-          role: member.role || "member"
-        })),
-        creator_id: groupData.creator?._id || null
-      };
-    } else {
-      throw new Error(response.data.message || "Lấy thông tin nhóm thất bại");
+
+    if (response.data.status !== 'success') {
+      throw new Error(response.data.message || 'Không thể lấy thông tin nhóm.');
     }
+
+    console.log('Group details response:', response.data);
+    return response.data.data;
   } catch (error) {
-    console.error("❌ Lỗi khi lấy thông tin nhóm:", error.response?.data || error.message);
-    throw error.response?.data || { message: error.message || "Lỗi không xác định" };
+    console.error('Error fetching group details:', error.response?.data || error.message);
+    throw error;
   }
 };
-
 // Get all groups for current user
 export const getUserGroups = async () => {
   try {
