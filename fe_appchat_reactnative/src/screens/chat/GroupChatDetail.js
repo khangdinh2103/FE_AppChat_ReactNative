@@ -7,7 +7,6 @@ import {
   Alert,
   ActivityIndicator,
   StyleSheet,
-  Linking,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { GiftedChat, Bubble, InputToolbar, Composer, Send } from "react-native-gifted-chat";
@@ -37,6 +36,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { Video } from "expo-av";
 import { uploadFileToS3 } from '../../services/s3Service';
+import { Linking } from 'react-native';
 
 const GroupChatDetail = () => {
   const route = useRoute();
@@ -297,11 +297,20 @@ const GroupChatDetail = () => {
 
   // Handle revoked messages
   const handleMessageRevoked = (data) => {
+    console.log("Message revoked event received:", data);
+    
     if (data.messageId) {
       setMessages((prevMessages) =>
         prevMessages.map((msg) =>
           msg._id === data.messageId
-            ? { ...msg, text: "Tin nhắn đã được thu hồi", revoked: true }
+            ? { 
+                ...msg, 
+                text: "Tin nhắn đã được thu hồi", 
+                revoked: true,
+                image: null,
+                video: null,
+                file: null
+              }
             : msg
         )
       );
@@ -378,103 +387,118 @@ const GroupChatDetail = () => {
     [conversationId, groupId, user]
   );
 
-  // Send media
-  const handleSendMedia = async (mediaType, fileUri, fileName, fileType, fileSize) => {
-    let tempMessage = null;
-    try {
-      if (!conversationId) throw new Error("conversationId không hợp lệ");
-
-      const messageData = {
-        conversationId,
-        message_type: mediaType,
-        content: mediaType === "text" ? fileUri : "",
-        file_meta: {
-          url: fileUri,
-          file_name: fileName,
-          file_type: fileType,
-          file_size: fileSize,
-        },
-      };
-
-      tempMessage = {
-        _id: Date.now().toString(),
-        createdAt: new Date(),
-        user: {
-          _id: user._id,
-          name: user.name,
-          avatar: user.avatar,
-        },
-        pending: true,
-      };
-
-      if (mediaType === "image") {
-        tempMessage.image = fileUri;
-      } else if (mediaType === "video") {
-        tempMessage.video = fileUri;
-      } else if (mediaType === "file") {
-        tempMessage.text = fileName;
-        tempMessage.file = {
-          url: fileUri,
-          file_name: fileName,
-          file_type: fileType,
-          file_size: fileSize,
-        };
-      }
-
-      setMessages((previousMessages) => GiftedChat.append(previousMessages, [tempMessage]));
-
-      const response = await sendGroupMessage(messageData);
-      if (response.data.status === "success") {
-        // Change emitMessage to emitGroupMessage
-        emitGroupMessage({ 
-          message: response.data.data, 
-          groupId,
-          conversationId 
+    // Send media
+    const handleSendMedia = async (mediaType, fileUri, fileName, fileType, fileSize) => {
+      let tempMessage = null;
+      try {
+        if (!conversationId) throw new Error("conversationId không hợp lệ");
+  
+        console.log("Uploading file to S3:", { mediaType, fileUri, fileName, fileType, fileSize });
+        
+        // Upload file to S3 first
+        const fileData = await uploadFileToS3(fileUri, {
+          fileName,
+          fileType,
+          fileSize
         });
-
-        const confirmedMessage = {
-          _id: response.data.data._id,
-          createdAt: new Date(response.data.data.timestamp),
+        
+        console.log("S3 upload response:", fileData);
+  
+        // Create temporary message to show in UI
+        tempMessage = {
+          _id: Date.now().toString(),
+          createdAt: new Date(),
           user: {
             _id: user._id,
             name: user.name,
             avatar: user.avatar,
           },
+          pending: true,
         };
-
+  
         if (mediaType === "image") {
-          confirmedMessage.image = response.data.data.content;
+          tempMessage.image = fileUri; // Show local URI while uploading
         } else if (mediaType === "video") {
-          confirmedMessage.video = response.data.data.content;
+          tempMessage.video = fileUri; // Show local URI while uploading
         } else if (mediaType === "file") {
-          confirmedMessage.text = fileName;
-          confirmedMessage.file = {
-            url: response.data.data.content,
+          tempMessage.text = fileName;
+          tempMessage.file = {
+            url: fileUri, // Show local URI while uploading
             file_name: fileName,
             file_type: fileType,
             file_size: fileSize,
           };
         }
-
-        setMessages((previousMessages) =>
-          previousMessages.map((msg) =>
-            msg._id === tempMessage._id ? confirmedMessage : msg
-          )
-        );
-      } else {
-        throw new Error(response.data.message || "Không thể gửi tệp.");
+  
+        setMessages((previousMessages) => GiftedChat.append(previousMessages, [tempMessage]));
+  
+        // Prepare message data with S3 URL
+        const messageData = {
+          conversationId,
+          message_type: mediaType,
+          content: fileData.url,
+          file_meta: {
+            url: fileData.url,
+            file_name: fileName,
+            file_type: fileType,
+            file_size: fileSize,
+          },
+        };
+  
+        // Send message to server
+        const response = await sendGroupMessage(messageData);
+        if (response.data.status === "success") {
+          // Emit message to group
+          emitGroupMessage({ 
+            message: response.data.data, 
+            groupId,
+            conversationId 
+          });
+  
+          // Create confirmed message with server data
+          const confirmedMessage = {
+            _id: response.data.data._id,
+            createdAt: new Date(response.data.data.timestamp),
+            user: {
+              _id: user._id,
+              name: user.name,
+              avatar: user.avatar,
+            },
+          };
+  
+          if (mediaType === "image") {
+            confirmedMessage.image = fileData.url;
+          } else if (mediaType === "video") {
+            confirmedMessage.video = fileData.url;
+          } else if (mediaType === "file") {
+            confirmedMessage.text = fileName;
+            confirmedMessage.file = {
+              url: fileData.url,
+              file_name: fileName,
+              file_type: fileType,
+              file_size: fileSize,
+            };
+          }
+  
+          // Replace temporary message with confirmed message
+          setMessages((previousMessages) =>
+            previousMessages.map((msg) =>
+              msg._id === tempMessage._id ? confirmedMessage : msg
+            )
+          );
+        } else {
+          throw new Error(response.data.message || "Không thể gửi tệp.");
+        }
+      } catch (error) {
+        console.error("Error sending media:", error);
+        if (tempMessage) {
+          setMessages((previousMessages) =>
+            previousMessages.filter((msg) => msg._id !== tempMessage._id)
+          );
+        }
+        Alert.alert("Lỗi", `Không thể gửi tệp: ${error.message || "Vui lòng thử lại."}`);
       }
-    } catch (error) {
-      console.error("Error sending media:", error);
-      if (tempMessage) {
-        setMessages((previousMessages) =>
-          previousMessages.filter((msg) => msg._id !== tempMessage._id)
-        );
-      }
-      Alert.alert("Lỗi", `Không thể gửi tệp: ${error.message || "Vui lòng thử lại."}`);
-    }
-  };
-
+    };
   // Image picker
   const handleImagePick = async () => {
     try {
@@ -579,22 +603,52 @@ const GroupChatDetail = () => {
   // Revoke message
   const handleRevokeMessage = async (messageId) => {
     try {
-      const response = await revokeMessage(messageId);
-      if (response.data.status === "success") {
-        setMessages((prevMessages) =>
-          prevMessages.map((msg) =>
-            msg._id === messageId
-              ? { ...msg, text: "Tin nhắn đã được thu hồi", revoked: true }
-              : msg
-          )
-        );
-        if (socketRef.current) {
-          socketRef.current.emit("revokeMessage", { messageId, userId: user._id, groupId });
-        }
+      console.log("Attempting to revoke message:", messageId);
+      
+      // Check if the message exists and belongs to the user
+      const messageToRevoke = messages.find(msg => msg._id === messageId);
+      if (!messageToRevoke) {
+        throw new Error("Tin nhắn không tồn tại");
       }
+      
+      if (messageToRevoke.user._id !== user._id) {
+        throw new Error("Bạn không thể thu hồi tin nhắn của người khác");
+      }
+      
+      // Call the API to revoke the message
+      const response = await revokeMessage(messageId);
+      console.log("Revoke message response:", response);
+      
+      // Update the message in the local state regardless of response
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) =>
+          msg._id === messageId
+            ? { 
+                ...msg, 
+                text: "Tin nhắn đã được thu hồi", 
+                revoked: true,
+                image: null,
+                video: null,
+                file: null 
+              }
+            : msg
+        )
+      );
+      
+      // Emit the revoke event to other users
+      if (socketRef.current) {
+        socketRef.current.emit("revokeMessage", { 
+          messageId, 
+          userId: user._id, 
+          groupId,
+          conversationId 
+        });
+      }
+      
+      Alert.alert("Thành công", "Tin nhắn đã được thu hồi");
     } catch (error) {
       console.error("Error revoking message:", error);
-      Alert.alert("Lỗi", "Không thể thu hồi tin nhắn.");
+      Alert.alert("Lỗi", `Không thể thu hồi tin nhắn: ${error.message || "Vui lòng thử lại"}`);
     }
   };
 
@@ -653,82 +707,108 @@ const GroupChatDetail = () => {
   };
 
   // Render bubble
-  const renderBubble = (props) => {
-    const { currentMessage } = props;
-
-    if (currentMessage.revoked) {
+    // Render bubble
+    const renderBubble = (props) => {
+      const { currentMessage } = props;
+  
+      if (currentMessage.revoked) {
+        return (
+          <Bubble
+            {...props}
+            wrapperStyle={{ right: { backgroundColor: "#ccc" }, left: { backgroundColor: "#ccc" } }}
+          />
+        );
+      }
+  
+      if (currentMessage.image) {
+        return (
+          <View
+            style={[
+              styles.mediaBubble,
+              currentMessage.user._id === user._id ? styles.mediaBubbleRight : styles.mediaBubbleLeft,
+            ]}
+          >
+            <TouchableOpacity 
+              onPress={() => handleFileOpen(currentMessage.image)}
+              onLongPress={() => onLongPress(null, currentMessage)}
+              delayLongPress={500}
+            >
+              <Image source={{ uri: currentMessage.image }} style={styles.media} />
+            </TouchableOpacity>
+          </View>
+        );
+      }
+  
+      if (currentMessage.video) {
+        return (
+          <View
+            style={[
+              styles.mediaBubble,
+              currentMessage.user._id === user._id ? styles.mediaBubbleRight : styles.mediaBubbleLeft,
+            ]}
+          >
+            <TouchableOpacity 
+              onPress={() => handleFileOpen(currentMessage.video)}
+              onLongPress={() => onLongPress(null, currentMessage)}
+              delayLongPress={500}
+            >
+              <View style={styles.videoContainer}>
+                <Video
+                  source={{ uri: currentMessage.video }}
+                  style={styles.media}
+                  useNativeControls
+                  resizeMode="contain"
+                  isLooping={false}
+                  shouldPlay={false}
+                  posterSource={{ uri: currentMessage.video + '?poster' }}
+                />
+                <View style={styles.playButton}>
+                  <Ionicons name="play-circle" size={50} color="rgba(255,255,255,0.8)" />
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+  
+      if (currentMessage.file) {
+        return (
+          <View style={styles.fileBubble}>
+            <TouchableOpacity
+              style={styles.fileContainer}
+              onPress={() => handleFileOpen(currentMessage.file.url)}
+              onLongPress={() => onLongPress(null, currentMessage)}
+              delayLongPress={500}
+            >
+              <View style={styles.fileIconContainer}>
+                <Ionicons name="document-text" size={30} color="#fff" />
+              </View>
+              <View style={styles.fileInfo}>
+                <Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">
+                  {currentMessage.file.file_name}
+                </Text>
+                <Text style={styles.fileSize}>{formatFileSize(currentMessage.file.file_size)}</Text>
+              </View>
+              <Ionicons name="open-outline" size={24} color="#0084ff" />
+            </TouchableOpacity>
+          </View>
+        );
+      }
+  
       return (
         <Bubble
           {...props}
-          wrapperStyle={{ right: { backgroundColor: "#ccc" }, left: { backgroundColor: "#ccc" } }}
+          wrapperStyle={{
+            right: { backgroundColor: "#0084ff" },
+            left: { backgroundColor: "#f0f0f0" },
+          }}
+          textStyle={{
+            right: { color: "#fff" },
+            left: { color: "#333" },
+          }}
         />
       );
-    }
-
-    if (currentMessage.image) {
-      return (
-        <View
-          style={[
-            styles.mediaBubble,
-            currentMessage.user._id === user._id ? styles.mediaBubbleRight : styles.mediaBubbleLeft,
-          ]}
-        >
-          <TouchableOpacity onPress={() => handleFileOpen(currentMessage.image)}>
-            <Image source={{ uri: currentMessage.image }} style={styles.media} />
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    if (currentMessage.video) {
-      return (
-        <View style={{ padding: 10 }}>
-          <Video
-            source={{ uri: currentMessage.video }}
-            style={{ width: 180, height: 180, borderRadius: 10 }}
-            controls
-            resizeMode="contain"
-          />
-        </View>
-      );
-    }
-
-    if (currentMessage.file) {
-      return (
-        <View style={styles.fileBubble}>
-          <TouchableOpacity
-            style={styles.fileContainer}
-            onPress={() => handleFileOpen(currentMessage.file.url)}
-          >
-            <View style={styles.fileIconContainer}>
-              <Ionicons name="document-text" size={30} color="#fff" />
-            </View>
-            <View style={styles.fileInfo}>
-              <Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">
-                {currentMessage.file.file_name}
-              </Text>
-              <Text style={styles.fileSize}>{formatFileSize(currentMessage.file.file_size)}</Text>
-            </View>
-            <Ionicons name="open-outline" size={24} color="#0084ff" />
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    return (
-      <Bubble
-        {...props}
-        wrapperStyle={{
-          right: { backgroundColor: "#0084ff" },
-          left: { backgroundColor: "#f0f0f0" },
-        }}
-        textStyle={{
-          right: { color: "#fff" },
-          left: { color: "#333" },
-        }}
-      />
-    );
-  };
+    };
 
   // Render avatar
   const renderAvatar = (props) => {
@@ -890,6 +970,27 @@ const GroupChatDetail = () => {
 };
 
 const styles = StyleSheet.create({
+  mediaBubble: { padding: 10 },
+  mediaBubbleRight: { alignItems: "flex-end" },
+  mediaBubbleLeft: { alignItems: "flex-start" },
+  media: { width: 200, height: 200, borderRadius: 10 },
+  videoContainer: {
+    position: 'relative',
+    width: 200,
+    height: 200,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  playButton: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   chatAvatar: { 
     width: 36, 
     height: 36, 

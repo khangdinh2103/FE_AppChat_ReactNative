@@ -2,7 +2,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Update the API_URL to include the correct endpoint
-const API_URL = "http://192.168.0.60:5000/api/group";  // Add /api/group
+const API_URL = "http://192.168.2.213:5000/api/group";  // Add /api/group
 const groupApi = axios.create({
   baseURL: API_URL,
 });
