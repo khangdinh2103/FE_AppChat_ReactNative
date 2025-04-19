@@ -16,15 +16,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const ChatDetail = () => {
   const route = useRoute();
   const navigation = useNavigation();
-  const { conversationId, name, avatar, receiverId } = route.params;  // Add receiverId
-  const { user } = useContext(AuthContext);
-  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const socketRef = useRef(null);
   const [isShowOptions, setIsShowOptions] = useState(false);
   const [isNewConversation, setIsNewConversation] = useState(false);
   
-  
+  const { conversationId, name, avatar, receiverId, messages: initialMessages } = route.params;  // Add initialMessages
+  const { user } = useContext(AuthContext);
+  const [messages, setMessages] = useState(initialMessages || []); // Initialize with initialMessages
   // In useEffect for socket setup
   useEffect(() => {
     const setupSocket = async () => {
@@ -72,36 +71,31 @@ const ChatDetail = () => {
                 avatar: msg.sender_id.primary_avatar || (msg.sender_id === user._id ? user.avatar : avatar)
               }
             };
-  
-            // Check if message is revoked
+            // Handle different message types
             if (msg.is_revoked) {
               baseMessage.text = "Tin nhắn đã được thu hồi";
               baseMessage.revoked = true;
-            } 
-            // Handle different message types for non-revoked messages
-            else if (msg.message_type === 'image') {
+            } else if (msg.message_type === 'image') {
               baseMessage.image = msg.content;
             } else if (msg.message_type === 'video') {
               baseMessage.video = msg.content;
             } else if (msg.message_type === 'file') {
               baseMessage.text = msg.file_meta?.file_name || 'File';
-            baseMessage.file = {
-              url: msg.file_meta?.url || msg.content, // Đảm bảo url là link bucket
-              file_name: msg.file_meta?.file_name || 'Unknown',
-              file_type: msg.file_meta?.file_type || 'application/octet-stream',
-              file_size: msg.file_meta?.file_size || 0,
-            };
+              baseMessage.file = {
+                url: msg.file_meta?.url || msg.content,
+                file_name: msg.file_meta?.file_name || 'Unknown',
+                file_type: msg.file_meta?.file_type || 'application/octet-stream',
+                file_size: msg.file_meta?.file_size || 0,
+              };
             } else {
               baseMessage.text = msg.content;
             }
-  
             return baseMessage;
           });
         // Filter out locally deleted messages
         const filteredMessages = formattedMessages.filter(
           msg => !deletedMessageIds.includes(msg._id)
         );
-        
         setMessages(filteredMessages);
       }
     } catch (error) {
@@ -478,6 +472,13 @@ const ChatDetail = () => {
       );
     }
   };
+  useEffect(() => {
+    if (conversationId && !initialMessages) { // Only fetch messages if initialMessages is not provided
+      fetchMessages();
+    } else {
+      setLoading(false);
+    }
+  }, [conversationId, initialMessages]);
   
   // Add function to handle message long press
   // Add state to track locally deleted messages
