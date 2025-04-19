@@ -33,6 +33,7 @@ import {
   emitChangeRoleMember, 
   emitUpdateGroup 
 } from "../../services/socketService";
+import * as Linking from 'expo-linking';
 
 const GroupInfo = () => {
   const route = useRoute();
@@ -112,33 +113,48 @@ const GroupInfo = () => {
 
   // Handle avatar change
   const handleChangeAvatar = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Cần quyền truy cập', 'Vui lòng cấp quyền truy cập thư viện ảnh');
-        return;
-      }
-      
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-      
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        setLoading(true);
-        const fileData = await uploadFileToS3(result.assets[0].uri);
-        await updateGroupInfo(groupId, { avatar: fileData.url });
-        setGroupInfo(prev => ({ ...prev, avatar: fileData.url }));
-        setLoading(false);
-      }
-    } catch (error) {
-      console.error('Error changing avatar:', error);
-      Alert.alert('Lỗi', 'Không thể cập nhật ảnh nhóm: ' + error.message);
-      setLoading(false);
+  try {
+    // Kiểm tra quyền truy cập thư viện ảnh
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    
+    if (status !== 'granted') {
+      // Nếu quyền bị từ chối, hiển thị thông báo với tùy chọn mở cài đặt
+      Alert.alert(
+        'Cần quyền truy cập',
+        'Ứng dụng cần quyền truy cập thư viện ảnh để chọn ảnh. Vui lòng cấp quyền trong cài đặt.',
+        [
+          { text: 'Hủy', style: 'cancel' },
+          {
+            text: 'Mở cài đặt',
+            onPress: () => Linking.openSettings(), // Mở cài đặt ứng dụng
+          },
+        ]
+      );
+      return;
     }
-  };
+
+    // Nếu quyền được cấp, mở thư viện ảnh
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setLoading(true);
+      const fileData = await uploadFileToS3(result.assets[0].uri);
+      await updateGroupInfo(groupId, { avatar: fileData.url });
+      setGroupInfo(prev => ({ ...prev, avatar: fileData.url }));
+      Alert.alert('Thành công', 'Đã cập nhật ảnh nhóm');
+    }
+  } catch (error) {
+    console.error('Error changing avatar:', error);
+    Alert.alert('Lỗi', 'Không thể cập nhật ảnh nhóm: ' + (error.message || 'Vui lòng thử lại'));
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Save group info changes
   const saveGroupChanges = async () => {
@@ -180,12 +196,23 @@ const GroupInfo = () => {
       setSearchLoading(true);
       const results = await searchUsers(query);
       console.log("Search results:", results);
-      const filteredResults = results.filter(
-        result => !members.some(member => member.user_id === result._id || member.user?._id === result._id)
-      ).map(result => ({
-        ...result,
-        name: result.name || result.email || 'Người dùng không xác định',
-      }));
+      
+      const filteredResults = results
+        .filter(result => {
+          const isNotMember = !members.some(member => 
+            member.user_id === result._id || member.user?._id === result._id
+          );
+          const hasValidId = result._id && typeof result._id === 'string';
+          if (!hasValidId) {
+            console.warn('User with invalid _id:', result);
+          }
+          return isNotMember && hasValidId;
+        })
+        .map(result => ({
+          ...result,
+          name: result.name || result.email || 'Người dùng không xác định',
+        }));
+      
       setSearchResults(filteredResults);
     } catch (error) {
       console.error('Error searching users:', error);
@@ -203,12 +230,26 @@ const GroupInfo = () => {
         return;
       }
       
+      // Kiểm tra groupId
+      if (!groupId || typeof groupId !== 'string') {
+        Alert.alert('Lỗi', 'ID nhóm không hợp lệ');
+        return;
+      }
+  
       setLoading(true);
       const memberIds = selectedUsers.map(user => user._id);
-      await addGroupMembers(groupId, memberIds);
-      memberIds.forEach(memberId => {
+  
+      // Kiểm tra memberIds
+      if (!memberIds.every(id => id && typeof id === 'string')) {
+        Alert.alert('Lỗi', 'Danh sách ID thành viên không hợp lệ');
+        return;
+      }
+  
+      // Gọi API cho từng memberId
+      for (const memberId of memberIds) {
+        await addGroupMembers(groupId, memberId);
         emitAddMemberToGroup(groupId, memberId, user._id);
-      });
+      }
       
       const newMembers = [
         ...members,
@@ -227,7 +268,7 @@ const GroupInfo = () => {
       Alert.alert('Thành công', 'Đã thêm thành viên vào nhóm');
     } catch (error) {
       console.error('Error adding members:', error);
-      Alert.alert('Lỗi', 'Không thể thêm thành viên: ' + error.message);
+      Alert.alert('Lỗi', 'Không thể thêm thành viên: ' + (error.message || 'Vui lòng thử lại'));
     } finally {
       setLoading(false);
     }
@@ -316,60 +357,86 @@ const GroupInfo = () => {
   };
 
   // Render member item
-  const renderMemberItem = ({ item }) => {
-    const member = {
-      user_id: item.user?._id || item.user_id || item._id,
-      name: item.user?.name || item.name || 'Thành viên không xác định',
-      avatar: item.user?.avatar || item.avatar,
-      role: item.role,
-    };
-    const isCurrentUser = member.user_id === user._id;
-    const isCreator = member.role === 'creator';
-    const isAdmin = member.role === 'admin' || isCreator;
-
-    return (
-      <View style={styles.memberItem}>
-        {member.avatar ? (
-          <Image source={{ uri: member.avatar }} style={styles.memberAvatar} />
-        ) : (
-          <View style={[styles.memberAvatar, styles.avatarPlaceholder]}>
-            <Text style={styles.avatarText}>{member.name.charAt(0).toUpperCase()}</Text>
-          </View>
-        )}
-        
-        <View style={styles.memberInfo}>
-          <Text style={styles.memberName}>
-            {member.name} {isCurrentUser ? '(Bạn)' : ''}
-          </Text>
-          <Text style={styles.memberRole}>
-            {isCreator ? 'Người tạo nhóm' : (isAdmin ? 'Quản trị viên' : 'Thành viên')}
-          </Text>
-        </View>
-        
-        {isAdmin && route.params.isAdmin && !isCurrentUser && !isCreator && (
-          <TouchableOpacity 
-            style={styles.memberAction}
-            onPress={() => handleChangeRole(member.user_id, member.role)}
-          >
-            <Text style={styles.actionText}>
-              {isAdmin ? 'Hạ cấp' : 'Thăng cấp'}
-            </Text>
-          </TouchableOpacity>
-        )}
-        
-        {(route.params.isAdmin || isCurrentUser) && !isCreator && (
-          <TouchableOpacity 
-            style={[styles.memberAction, styles.removeAction]}
-            onPress={() => handleRemoveMember(member.user_id)}
-          >
-            <Text style={styles.removeText}>
-              {isCurrentUser ? 'Rời nhóm' : 'Xóa'}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    );
+  // Trong GroupInfo.js
+const renderMemberItem = ({ item }) => {
+  const member = {
+    user_id: item.user?._id || item.user_id || item._id,
+    name: item.user?.name || item.name || 'Thành viên không xác định',
+    avatar: item.user?.primary_avatar || item.avatar,
+    role: item.role,
   };
+  const isCurrentUser = member.user_id === user._id;
+  const isCreator = member.user_id === groupInfo?.creator_id;
+  const isMemberAdmin = member.role === 'admin' || isCreator;
+
+  return (
+    <View style={styles.memberItem}>
+      {member.avatar ? (
+        <Image source={{ uri: member.avatar }} style={styles.memberAvatar} />
+      ) : (
+        <View style={[styles.memberAvatar, styles.avatarPlaceholder]}>
+          <Text style={styles.avatarText}>{member.name.charAt(0).toUpperCase()}</Text>
+        </View>
+      )}
+      
+      <View style={styles.memberInfo}>
+        <Text style={styles.memberName}>
+          {member.name} {isCurrentUser ? '(Bạn)' : ''}
+        </Text>
+        <Text style={styles.memberRole}>
+          {isCreator ? 'Người tạo nhóm' : (isMemberAdmin ? 'Quản trị viên' : 'Thành viên')}
+        </Text>
+      </View>
+      
+      {route.params.isAdmin && !isCurrentUser && !isCreator && (
+        <TouchableOpacity 
+          style={styles.memberAction}
+          onPress={() => handleChangeRole(member.user_id, member.role)}
+        >
+          <Text style={styles.actionText}>
+            {isMemberAdmin ? 'Hạ cấp' : 'Thăng cấp'}
+          </Text>
+        </TouchableOpacity>
+      )}
+      
+      {(route.params.isAdmin || isCurrentUser) && !isCreator && (
+        <TouchableOpacity 
+          style={[styles.memberAction, styles.removeAction]}
+          onPress={() => handleRemoveMember(member.user_id)}
+        >
+          <Text style={styles.removeText}>
+            {isCurrentUser ? 'Rời nhóm' : 'Xóa'}
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+};
+
+// Sửa nút "Sửa" trong phần header
+const renderHeader = () => (
+  <View style={styles.header}>
+    <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+      <Ionicons name="arrow-back" size={24} color="#000" />
+    </TouchableOpacity>
+    <Text style={styles.headerTitle}>Thông tin nhóm</Text>
+    {route.params.isAdmin && (
+      <TouchableOpacity
+        style={styles.editButton}
+        onPress={() =>
+          navigation.navigate('EditGroup', {
+            groupId: route.params.groupId,
+            groupName: groupInfo?.name,
+            groupAvatar: groupInfo?.avatar,
+            description: groupInfo?.description,
+          })
+        }
+      >
+        <Ionicons name="pencil" size={24} color="#007AFF" />
+      </TouchableOpacity>
+    )}
+  </View>
+);
 
   // Add Members Modal
   const renderAddMembersModal = () => (
