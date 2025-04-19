@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AuthContext } from '../../contexts/AuthContext';
+import { checkConversationWithFriend } from '../../services/chatService'; // Adjust the path as necessary
 
 const AddFriendConfirmation = ({ navigation, route }) => {
   const { userData } = route.params;
@@ -22,31 +23,85 @@ const AddFriendConfirmation = ({ navigation, route }) => {
       // You can call your API to send friend request
       navigation.goBack();
     } catch (error) {
-      console.error('Error adding friend:', error);
     }
   };
   
-  // Add function to handle starting a chat
-  const handleStartChat = () => {
+  const handleStartChat = async () => {
     try {
       setIsLoading(true);
-      
-      // Navigate directly to chat detail with receiverId
-      // No conversationId needed for new conversations
-      navigation.navigate('ChatDetail', {
-        name: userData.name,
-        avatar: userData.avatar || null,
-        receiverId: userData.id,
-        isNewChat: true  // Add flag to indicate this is a new chat
-      });
-      console.log('Navigating to chat detail with receiverId:', userData);
+  
+      if (!user?._id) {
+        throw new Error("Không tìm thấy userId. Vui lòng đăng nhập lại.");
+      }
+  
+      let existingConversation = null;
+  
+      try {
+        const res = await checkConversationWithFriend(userData.id, user._id);
+        existingConversation = res.data.data;
+      } catch (error) {
+        // Nếu là 404 (không có cuộc trò chuyện), thì bỏ qua nhẹ nhàng
+        if (!(error.response && error.response.status === 404)) {
+          // console.error('Lỗi khi kiểm tra cuộc trò chuyện:', error);
+        }
+        // Không in ra gì nếu là 404
+      }
+  
+      if (existingConversation) {
+        const formattedMessages = existingConversation.messages?.map(msg => ({
+          _id: msg._id || msg.message_id,
+          text: msg.content,
+          createdAt: new Date(msg.timestamp),
+          user: {
+            _id: msg.sender_id,
+            name: msg.sender_id === user._id ? user.name : userData.name,
+            avatar: msg.sender_id === user._id ? user.primary_avatar : userData.avatar,
+          },
+        })) || [];
+  
+        navigation.navigate('ChatDetail', {
+          name: userData.name,
+          avatar: userData.avatar || null,
+          receiverId: userData.id,
+          conversationId: existingConversation._id,
+          isNewChat: false,
+          messages: formattedMessages,
+        });
+      } else {
+        // Không có cuộc trò chuyện -> tạo mới
+        navigation.navigate('ChatDetail', {
+          name: userData.name,
+          avatar: userData.avatar || null,
+          receiverId: userData.id,
+          isNewChat: true,
+        });
+      }
     } catch (error) {
-      console.error('Error starting chat:', error);
-      Alert.alert('Error', 'Failed to start conversation');
+      console.error('Lỗi khi bắt đầu trò chuyện:', error);
+      Alert.alert('Lỗi', 'Không thể bắt đầu cuộc trò chuyện');
     } finally {
       setIsLoading(false);
     }
   };
+  
+  
+
+  // // Function to check for existing conversation
+  // const getExistingConversationId = async (friendId) => {
+  //   try {
+  //     const { user } = useContext(AuthContext); // Get user from AuthContext
+  //     console.log('User from AuthContext:', user);
+  //     if (!user?._id) {
+  //       throw new Error("Không tìm thấy userId. Vui lòng đăng nhập lại.");
+  //     }
+  
+  //     const response = await checkConversationWithFriend(friendId);
+  //     return response.data.data?._id || null; // Adjust based on your API response structure
+  //   } catch (error) {
+  //     console.error('Error checking existing conversation:', error);
+  //     return null;
+  //   }
+  // };
 
   return (
     <SafeAreaView style={styles.container}>

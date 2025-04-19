@@ -304,3 +304,28 @@ export const subscribeToGroupUpdated = (callback) => {
   }
   return () => {};
 };
+
+
+export const checkConversationWithFriend = async (friendId, userId) => {
+  try {
+    const token = await AsyncStorage.getItem("accessToken");
+    if (!token) {
+      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
+    }
+
+    const response = await axios.get(`${API_URL}/api/conversation/checkBetweenUsers`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      params: {
+        userId1: userId,
+        userId2: friendId,
+      },
+    });
+
+    return response;
+  } catch (error) {
+    // console.error('Error checking conversation:', error.response?.data || error.message);
+    // throw error;
+  }
+};
