@@ -2,7 +2,7 @@ import io from 'socket.io-client';
 // import { API_URL } from '@env';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // const API_URL = "https://1814-2a09-bac5-d46c-25d7-00-3c5-3e.ngrok-free.app";
-const API_URL = "http://192.168.1.36:5000"
+const API_URL = "http://192.168.0.60:5000"
 let socket;
 
 export const initializeSocket = async () => {
@@ -27,6 +27,11 @@ export const initializeSocket = async () => {
     // Add specific event logging
     socket.on('receiveMessage', (data) => {
       console.log('Socket received message:', data);
+    });
+    
+    // Add group message event logging
+    socket.on('receiveGroupMessage', (data) => {
+      console.log('Socket received group message:', data);
     });
 
     // Add message revocation event logging
@@ -223,4 +228,21 @@ export const subscribeToAllGroupEvents = (callbacks) => {
   return () => {
     unsubscribeFunctions.forEach(unsubscribe => unsubscribe());
   };
+};
+
+// Add these functions for group messaging
+
+// Emit group message
+export const emitGroupMessage = (messageData) => {
+  if (!socket) return;
+  console.log('Emitting group message:', messageData);
+  socket.emit('sendGroupMessage', messageData);
+};
+
+// Subscribe to group messages
+export const subscribeToGroupMessages = (callback) => {
+  if (!socket) return () => {};
+  console.log('Subscribing to group messages');
+  socket.on('receiveGroupMessage', callback);
+  return () => socket.off('receiveGroupMessage', callback);
 };
