@@ -7,6 +7,7 @@ import {
   Alert,
   ActivityIndicator,
   StyleSheet,
+  Linking,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { GiftedChat, Bubble, InputToolbar, Composer, Send } from "react-native-gifted-chat";
@@ -16,22 +17,26 @@ import {
   getGroupDetails,
   sendGroupMessage,
   getMessages,
+} from "../../services/chatService";
+
+import {
   initializeSocket,
   joinGroupRoom,
   leaveGroupRoom,
-  emitMessage,
-  subscribeToMessages,
+  emitGroupMessage,
+  subscribeToGroupMessages,
   subscribeToMessageRevocation,
   subscribeToMemberAddedToGroup,
   subscribeToMemberRemovedFromGroup,
   subscribeToGroupUpdated,
   revokeMessage,
-} from "../../services/chatService";
+} from "../../services/socketService";
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
-// import * as ImagePicker from "expo-image-picker";
-// import * as DocumentPicker from "expo-document-picker";
-// import Video from "react-native-video";
-// import * as Linking from "expo-linking";
+import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import { Video } from "expo-av";
+import { uploadFileToS3 } from '../../services/s3Service';
 
 const GroupChatDetail = () => {
   const route = useRoute();
@@ -158,14 +163,12 @@ const GroupChatDetail = () => {
 
   // Message subscription
   useEffect(() => {
-    subscribeToMessages(handleReceiveMessage);
-    subscribeToMessageRevocation(handleMessageRevoked);
+    const unsubscribeGroupMessages = subscribeToGroupMessages(handleReceiveMessage);
+    const unsubscribeMessageRevocation = subscribeToMessageRevocation(handleMessageRevoked);
 
     return () => {
-      if (socketRef.current) {
-        socketRef.current.off("receiveGroupMessage", handleReceiveMessage);
-        socketRef.current.off("messageRevoked", handleMessageRevoked);
-      }
+      if (unsubscribeGroupMessages) unsubscribeGroupMessages();
+      if (unsubscribeMessageRevocation) unsubscribeMessageRevocation();
     };
   }, [messages]);
 
@@ -178,23 +181,32 @@ const GroupChatDetail = () => {
       console.log("Fetching messages for conversationId:", convId);
       const response = await getMessages(convId);
       console.log("Messages API response:", response.data);
-
+  
       if (response.data.status === "success" && Array.isArray(response.data.data)) {
         const formattedMessages = response.data.data
           .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
           .map((msg) => {
-            const sender = members.find((m) => m.user_id === msg.sender_id) || {
-              name: "Unknown",
-              avatar: null,
+            // Ensure sender_id is in the correct format
+            const senderId = typeof msg.sender_id === 'object' ? msg.sender_id._id : msg.sender_id;
+            
+            // Find the member who sent this message
+            const memberInfo = members.find(m => 
+              m.user._id === senderId || 
+              (m.user._id && msg.sender_id && m.user._id === msg.sender_id._id)
+            );
+            
+            const sender = {
+              _id: senderId,
+              name: memberInfo?.user?.name || msg.sender_id?.name || "Unknown",
+              avatar: memberInfo?.user?.primary_avatar || msg.sender_id?.primary_avatar || null,
             };
+            
+            console.log("Message sender:", sender);
+            
             const baseMessage = {
               _id: msg._id,
               createdAt: new Date(msg.timestamp),
-              user: {
-                _id: msg.sender_id,
-                name: sender.name,
-                avatar: sender.avatar,
-              },
+              user: sender,
             };
             if (msg.is_revoked) {
               baseMessage.text = "Tin nhắn đã được thu hồi";
@@ -216,7 +228,7 @@ const GroupChatDetail = () => {
             }
             return baseMessage;
           });
-
+  
         const filteredMessages = formattedMessages.filter(
           (msg) => !deletedMessageIds.includes(msg._id)
         );
@@ -238,19 +250,29 @@ const GroupChatDetail = () => {
   const handleReceiveMessage = (data) => {
     const { message, conversationId: msgConvId } = data;
     if (msgConvId === conversationId && !deletedMessageIds.includes(message._id)) {
-      const sender = members.find((m) => m.user_id === message.sender_id) || {
-        name: "Unknown",
-        avatar: null,
-      };
+      console.log("Received message:", message);
+      
+      // Find the member who sent this message
+      const memberInfo = members.find(m => 
+        m.user._id === message.sender_id || 
+        (m.user._id && message.sender_id && m.user._id === message.sender_id._id)
+      );
+      
+      // Ensure we have the correct sender ID format
+      const senderId = typeof message.sender_id === 'object' ? message.sender_id._id : message.sender_id;
+      
       const formattedMessage = {
         _id: message._id,
         createdAt: new Date(message.timestamp),
         user: {
-          _id: message.sender_id,
-          name: sender.name,
-          avatar: sender.avatar,
+          _id: senderId,
+          name: memberInfo?.user?.name || message.sender_name || "Unknown",
+          avatar: memberInfo?.user?.primary_avatar || message.sender_avatar || null,
         },
       };
+      
+      console.log("Formatted message user:", formattedMessage.user);
+      
       if (message.is_revoked) {
         formattedMessage.text = "Tin nhắn đã được thu hồi";
         formattedMessage.revoked = true;
@@ -294,13 +316,13 @@ const GroupChatDetail = () => {
         const messageText = newMessages[0].text;
         if (!messageText.trim()) return;
         if (!conversationId) throw new Error("conversationId không hợp lệ");
-
+  
         const messageData = {
           conversationId,
           message_type: "text",
           content: messageText,
         };
-
+  
         tempMessage = {
           _id: Date.now().toString(),
           text: messageText,
@@ -312,13 +334,18 @@ const GroupChatDetail = () => {
           },
           pending: true,
         };
-
+  
         setMessages((previousMessages) => GiftedChat.append(previousMessages, [tempMessage]));
-
+  
         const response = await sendGroupMessage(messageData);
         if (response.data.status === "success") {
-          emitMessage({ message: response.data.data, groupId });
-
+          // Change emitMessage to emitGroupMessage
+          emitGroupMessage({ 
+            message: response.data.data, 
+            groupId,
+            conversationId 
+          });
+  
           const confirmedMessage = {
             _id: response.data.data._id,
             text: response.data.data.content,
@@ -329,7 +356,7 @@ const GroupChatDetail = () => {
               avatar: user.avatar,
             },
           };
-
+  
           setMessages((previousMessages) =>
             previousMessages.map((msg) =>
               msg._id === tempMessage._id ? confirmedMessage : msg
@@ -398,7 +425,12 @@ const GroupChatDetail = () => {
 
       const response = await sendGroupMessage(messageData);
       if (response.data.status === "success") {
-        emitMessage({ message: response.data.data, groupId });
+        // Change emitMessage to emitGroupMessage
+        emitGroupMessage({ 
+          message: response.data.data, 
+          groupId,
+          conversationId 
+        });
 
         const confirmedMessage = {
           _id: response.data.data._id,
@@ -686,10 +718,30 @@ const GroupChatDetail = () => {
     return (
       <Bubble
         {...props}
-        wrapperStyle={{ right: { backgroundColor: "#0084ff" }, left: { backgroundColor: "#f0f0f0" } }}
-        textStyle={{ right: { color: "#fff" }, left: { color: "#333" } }}
+        wrapperStyle={{
+          right: { backgroundColor: "#0084ff" },
+          left: { backgroundColor: "#f0f0f0" },
+        }}
+        textStyle={{
+          right: { color: "#fff" },
+          left: { color: "#333" },
+        }}
       />
     );
+  };
+
+  // Render avatar
+  const renderAvatar = (props) => {
+    const { currentMessage } = props;
+    if (currentMessage.user._id !== user._id) {
+      return (
+        <Image
+          source={{ uri: currentMessage.user.avatar }}
+          style={styles.chatAvatar}
+        />
+      );
+    }
+    return null;
   };
 
   // Render input toolbar
@@ -822,8 +874,8 @@ const GroupChatDetail = () => {
           onSend={onSend}
           user={{ _id: user._id, name: user.name, avatar: user.avatar }}
           renderBubble={renderBubble}
+          renderAvatar={renderAvatar} // Add this line to render avatars
           renderInputToolbar={renderInputToolbar}
-          renderAvatar={null}
           alwaysShowSend
           scrollToBottom
           infiniteScroll
@@ -837,13 +889,20 @@ const GroupChatDetail = () => {
   );
 };
 
-// Styles (giữ nguyên)
 const styles = StyleSheet.create({
+  chatAvatar: { 
+    width: 36, 
+    height: 36, 
+    borderRadius: 18, 
+    marginRight: 5,
+    marginBottom: 5
+  },
   container: { flex: 1, backgroundColor: "#fff" },
   header: {
+    marginTop: 40,
     flexDirection: "row",
     alignItems: "center",
-    padding: 10,
+    padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#eee",
   },

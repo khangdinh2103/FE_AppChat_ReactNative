@@ -1,7 +1,8 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const API_URL = "http://192.168.1.46:5000";
+// Update the API_URL to include the correct endpoint
+const API_URL = "http://192.168.0.60:5000/api/group";  // Add /api/group
 const groupApi = axios.create({
   baseURL: API_URL,
 });
@@ -19,6 +20,7 @@ export const setupGroupInterceptor = (token) => {
   );
 };
 // Create a new group
+// Update the createGroup function to use the correct endpoint
 export const createGroup = async (groupData) => {
   try {
     const token = await AsyncStorage.getItem("accessToken");
@@ -27,7 +29,7 @@ export const createGroup = async (groupData) => {
       throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
     }
     
-    const response = await axios.post(`${API_URL}/create`, groupData, {
+    const response = await axios.post(`${API_URL}/create`, groupData, {  // This will now be /api/group/create
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
@@ -64,7 +66,7 @@ export const getGroupDetails = async (groupId) => {
       throw new Error('groupId không hợp lệ.');
     }
 
-    const response = await groupApi.get(`/api/group/${groupId}`, {
+    const response = await groupApi.get(`/${groupId}`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
