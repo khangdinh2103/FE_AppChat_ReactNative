@@ -2,7 +2,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Update the API_URL to include the correct endpoint
-const API_URL = "http://192.168.2.213:5000/api/group";  // Add /api/group
+const API_URL = "http://192.168.1.117:5000/api/group";  // Add /api/group
 const groupApi = axios.create({
   baseURL: API_URL,
 });
@@ -226,5 +226,105 @@ export const updateGroupInfo = async (groupId, groupData) => {
   } catch (error) {
     console.error("❌ Lỗi khi cập nhật thông tin nhóm:", error.response?.data || error.message);
     throw error.response?.data || { message: error.message || "Lỗi không xác định" };
+  }
+};
+
+// Add these functions to your existing groupService.js file if they don't exist
+
+// Get group invite link
+export const getGroupInviteLink = async (groupId) => {
+  try {
+    const token = await AsyncStorage.getItem("accessToken");
+    if (!token) {
+      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
+    }
+    
+    const response = await axios.get(`${API_URL}/${groupId}/invite`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    // Log the full response for debugging
+    console.log("Full invite link response:", JSON.stringify(response.data));
+    
+    // Process the response to ensure we have a valid URL
+    if (response.data && response.data.data) {
+      const data = response.data.data;
+      // If the URL is directly in the response data
+      if (data.url) {
+        return {
+          data: {
+            status: "success",
+            data: {
+              url: data.url,
+              is_active: data.is_active || false,
+              can_share: data.can_share || false
+            }
+          }
+        };
+      } 
+      // If the URL is nested in invite_link
+      else if (data.invite_link && data.invite_link.code) {
+        // Construct the URL from the invite code
+        const inviteCode = data.invite_link.code;
+        const url = `http://192.168.1.117:5000/api/group/join/${inviteCode}`;
+        return {
+          data: {
+            status: "success",
+            data: {
+              url: url,
+              is_active: data.invite_link.is_active || false,
+              can_share: data.can_share || false
+            }
+          }
+        };
+      }
+    }
+    
+    return response;
+  } catch (error) {
+    console.error("Error getting group invite link:", error);
+    throw error;
+  }
+};
+
+// Regenerate invite link
+export const regenerateInviteLink = async (groupId) => {
+  try {
+    const token = await AsyncStorage.getItem("accessToken");
+    if (!token) {
+      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
+    }
+    
+    const response = await axios.post(
+      `${API_URL}/${groupId}/invite/regenerate`,
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    
+    return response;
+  } catch (error) {
+    console.error("Error regenerating invite link:", error);
+    throw error;
+  }
+};
+
+// Update invite link status (active/inactive)
+export const updateInviteLinkStatus = async (groupId, isActive) => {
+  try {
+    const token = await AsyncStorage.getItem("accessToken");
+    if (!token) {
+      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
+    }
+    
+    const response = await axios.put(
+      `${API_URL}/${groupId}/invite`,
+      { is_active: isActive },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    
+    return response;
+  } catch (error) {
+    console.error("Error updating invite link status:", error);
+    throw error;
   }
 };

@@ -12,6 +12,8 @@ import {
   Platform,
   TextInput,
   Modal,
+  Clipboard,
+  ToastAndroid,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -22,7 +24,10 @@ import {
   addGroupMembers, 
   removeGroupMember, 
   updateMemberRole, 
-  leaveGroup 
+  leaveGroup,
+  getGroupInviteLink,
+  regenerateInviteLink,
+  updateInviteLinkStatus
 } from '../../services/groupService';
 import { searchUsers } from '../../services/authService';
 import * as ImagePicker from 'expo-image-picker';
@@ -38,7 +43,9 @@ const GroupInfo = () => {
   const route = useRoute();
   const navigation = useNavigation();
   console.log("GroupInfo route params:", route.params);
-
+  const [inviteLink, setInviteLink] = useState('');
+  const [inviteLinkActive, setInviteLinkActive] = useState(true);
+  const [showInviteOptions, setShowInviteOptions] = useState(false);
   const { 
     group, 
     groupId: routeGroupId, 
@@ -69,7 +76,7 @@ const GroupInfo = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  
+  const [copySuccess, setCopySuccess] = useState(false);
   // Normalize members data
   const normalizedMembers = members.map(member => ({
     user_id: member.user?._id || member.user_id || member._id,
@@ -109,6 +116,171 @@ const GroupInfo = () => {
 
     fetchGroupData();
   }, [groupId]);
+  useEffect(() => {
+    const fetchInviteLink = async () => {
+      try {
+        if (!groupId) return;
+        const response = await getGroupInviteLink(groupId);
+        console.log("Invite link response:", response.data);
+        
+        if (response && response.data && response.data.data) {
+          // Extract the URL directly
+          const url = response.data.data.url || '';
+          console.log("Extracted URL:", url);
+          
+          setInviteLink(url);
+          setInviteLinkActive(response.data.data.is_active || false);
+        }
+      } catch (error) {
+        console.error('Error fetching invite link:', error);
+        // Don't show an alert, just log the error
+      }
+    };
+
+    fetchInviteLink();
+  }, [groupId]);
+  const copyInviteLink = () => {
+    try {
+      // Make sure we have a valid string to copy
+      if (!inviteLink || typeof inviteLink !== 'string' || inviteLink.trim() === '') {
+        console.log('No valid invite link to copy');
+        Alert.alert('Thông báo', 'Link mời không khả dụng.');
+        return;
+      }
+      
+      Clipboard.setString(inviteLink);
+      
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Đã sao chép link mời', ToastAndroid.SHORT);
+      } else {
+        // For iOS, show visual feedback
+        setCopySuccess(true);
+        setTimeout(() => {
+          setCopySuccess(false);
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Error copying link:', error);
+      Alert.alert('Lỗi', 'Không thể sao chép link: ' + error.message);
+    }
+  };
+  
+
+  // Function to regenerate invite link
+  const handleRegenerateLink = async () => {
+    try {
+      setLoading(true);
+      const response = await regenerateInviteLink(groupId);
+      if (response && response.data && response.data.data) {
+        setInviteLink(response.data.data.invite_link);
+        Alert.alert('Thành công', 'Đã tạo link mời mới');
+      }
+    } catch (error) {
+      console.error('Error regenerating invite link:', error);
+      Alert.alert('Lỗi', 'Không thể tạo link mời mới: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Function to toggle invite link status
+  const toggleInviteLinkStatus = async () => {
+    try {
+      setLoading(true);
+      const newStatus = !inviteLinkActive;
+      await updateInviteLinkStatus(groupId, newStatus);
+      setInviteLinkActive(newStatus);
+      Alert.alert('Thành công', newStatus ? 'Đã kích hoạt link mời' : 'Đã vô hiệu hóa link mời');
+    } catch (error) {
+      console.error('Error toggling invite link status:', error);
+      Alert.alert('Lỗi', 'Không thể thay đổi trạng thái link mời: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  const renderInviteLinkSection = () => {
+    // All members can see the link, but only admins/moderators can manage it
+    const currentUserMember = members.find(m => 
+      (m.user_id === user._id || (m.user && m.user._id === user._id))
+    );
+    const userRole = currentUserMember?.role;
+    const canManageInvites = userRole === 'admin' || userRole === 'moderator';
+    
+    return (
+      <View style={styles.sectionContainer}>
+        <Text style={styles.sectionTitle}>Link tham gia nhóm</Text>
+        
+        {/* Always show the link to all members */}
+        <View style={styles.inviteLinkContainer}>
+          <Text 
+            style={[styles.inviteLink, !inviteLinkActive && styles.inviteLinkDisabled]} 
+            numberOfLines={1}
+          >
+            {inviteLink || 'Đang tải...'}
+          </Text>
+          
+          <TouchableOpacity 
+            style={[styles.copyButton, copySuccess && styles.copyButtonSuccess]} 
+            onPress={copyInviteLink}
+            disabled={!inviteLinkActive || !inviteLink}
+          >
+            <Ionicons 
+              name={copySuccess ? "checkmark-circle" : "copy-outline"} 
+              size={22} 
+              color={copySuccess ? "#4CAF50" : (inviteLinkActive ? "#007AFF" : "#999")} 
+            />
+          </TouchableOpacity>
+        </View>
+        
+        {copySuccess && Platform.OS === 'ios' && (
+          <View style={styles.copySuccessMessage}>
+            <Text style={styles.copySuccessText}>Đã sao chép link mời</Text>
+          </View>
+        )}
+        
+        {/* Only show management options to admins/moderators */}
+        {canManageInvites && (
+          <View style={styles.inviteOptionsContainer}>
+            <TouchableOpacity 
+              style={styles.inviteOptionButton}
+              onPress={() => setShowInviteOptions(!showInviteOptions)}
+            >
+              <Text style={styles.inviteOptionText}>Quản lý link mời</Text>
+              <Ionicons 
+                name={showInviteOptions ? "chevron-up" : "chevron-down"} 
+                size={18} 
+                color="#007AFF" 
+              />
+            </TouchableOpacity>
+            
+            {showInviteOptions && (
+              <View style={styles.expandedOptions}>
+                <View style={styles.toggleContainer}>
+                  <Text style={styles.toggleLabel}>
+                    {inviteLinkActive ? 'Link mời đang hoạt động' : 'Link mời đã tắt'}
+                  </Text>
+                  <Switch
+                    value={inviteLinkActive}
+                    onValueChange={toggleInviteLinkStatus}
+                    trackColor={{ false: '#767577', true: '#81b0ff' }}
+                    thumbColor={inviteLinkActive ? '#007AFF' : '#f4f3f4'}
+                  />
+                </View>
+                
+                <TouchableOpacity 
+                  style={styles.regenerateButton}
+                  onPress={handleRegenerateLink}
+                >
+                  <Ionicons name="refresh" size={18} color="#007AFF" />
+                  <Text style={styles.regenerateText}>Tạo link mới</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
 
   // Handle avatar change
   const handleChangeAvatar = async () => {
@@ -549,6 +721,7 @@ const GroupInfo = () => {
           </View>
         )}
       </View>
+      {!loading && renderInviteLinkSection()}
       
       <View style={styles.membersSection}>
         <View style={styles.sectionHeader}>
@@ -580,6 +753,95 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  copyButtonSuccess: {
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    borderRadius: 15,
+  },
+  copySuccessMessage: {
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    padding: 8,
+    borderRadius: 8,
+    marginTop: 5,
+    alignItems: 'center',
+  },
+  copySuccessText: {
+    color: '#4CAF50',
+    fontWeight: '500',
+  },
+  sectionContainer: {
+    marginTop: 20,
+    padding: 15,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  inviteLinkContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  inviteLink: {
+    flex: 1,
+    fontSize: 14,
+    color: '#333',
+  },
+  inviteLinkDisabled: {
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  copyButton: {
+    padding: 5,
+  },
+  inviteOptionsContainer: {
+    marginTop: 5,
+  },
+  inviteOptionButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  inviteOptionText: {
+    color: '#007AFF',
+    fontSize: 16,
+  },
+  expandedOptions: {
+    marginTop: 10,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    padding: 10,
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  toggleLabel: {
+    fontSize: 14,
+  },
+  regenerateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  regenerateText: {
+    color: '#007AFF',
+    fontSize: 16,
+    marginLeft: 8,
   },
   centerContent: {
     justifyContent: 'center',
