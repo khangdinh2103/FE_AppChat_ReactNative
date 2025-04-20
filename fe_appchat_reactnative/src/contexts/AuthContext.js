@@ -7,7 +7,7 @@ import {
   searchUsers,
 } from "../services/authService";
 import { setupChatInterceptor } from '../services/chatService';
-import { initializeSocket, disconnectSocket } from '../services/socketService';
+import { getSocket, initializeSocket, disconnectSocket } from '../services/socketService';
 
 export const AuthContext = createContext();
 
@@ -16,6 +16,7 @@ export const AuthProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [token, setToken] = useState(null);
   const [searchResults, setSearchResults] = useState([]);
+  const [socketConnected, setSocketConnected] = useState(false);
 
   useEffect(() => {
     const loadUserAndToken = async () => {
@@ -24,16 +25,27 @@ export const AuthProvider = ({ children }) => {
           AsyncStorage.getItem("user"),
           AsyncStorage.getItem("accessToken")
         ]);
-        
+
         if (storedUser) {
-          setUser(JSON.parse(storedUser));
+          const parsedUser = JSON.parse(storedUser);
+          if (parsedUser?._id) {
+            setUser(parsedUser);
+          } else {
+            console.warn("Stored user does not have _id. Clearing user data.");
+            await AsyncStorage.removeItem("user");
+            await AsyncStorage.removeItem("accessToken");
+          }
         }
         if (storedToken) {
           setToken(storedToken);
           setupChatInterceptor(storedToken);
+          const socket = await initializeSocket();
+          setSocketConnected(socket && socket.connected);
         }
       } catch (error) {
         console.error("Error loading user data:", error);
+        await AsyncStorage.removeItem("user");
+        await AsyncStorage.removeItem("accessToken");
       } finally {
         setIsLoading(false);
       }
@@ -44,6 +56,9 @@ export const AuthProvider = ({ children }) => {
   const login = async (userData) => {
     try {
       const { user, accessToken } = userData;
+      if (!user?._id) {
+        throw new Error("User data does not contain _id. Cannot proceed with login.");
+      }
       await AsyncStorage.multiSet([
         ["accessToken", accessToken],
         ["user", JSON.stringify(user)]
@@ -51,7 +66,8 @@ export const AuthProvider = ({ children }) => {
       setUser(user);
       setToken(accessToken);
       setupChatInterceptor(accessToken);
-      await initializeSocket(); // Initialize socket after login
+      const socket = await initializeSocket();
+      setSocketConnected(socket && socket.connected);
     } catch (error) {
       console.error("Login error:", error);
       throw error;
@@ -59,10 +75,39 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    disconnectSocket(); // Disconnect socket on logout
-    await AsyncStorage.removeItem("accessToken");
-    await AsyncStorage.removeItem("user");
-    setUser(null);
+    try {
+      disconnectSocket();
+      await AsyncStorage.multiRemove(["accessToken", "user"]);
+      setUser(null);
+      setToken(null);
+      setSearchResults([]);
+      setSocketConnected(false);
+    } catch (error) {
+      console.error("Logout error:", error);
+      throw error;
+    }
+  };
+
+  const refreshUser = async () => {
+    try {
+      if (!token || !user?._id) {
+        throw new Error("No token or user ID available to refresh user data.");
+      }
+      const updatedUser = await getUserByIdOrEmail({ userId: user._id });
+      if (updatedUser?._id) {
+        await AsyncStorage.setItem("user", JSON.stringify(updatedUser));
+        setUser(updatedUser);
+        const socket = await initializeSocket();
+        setSocketConnected(socket && socket.connected);
+        return updatedUser;
+      } else {
+        throw new Error("Refreshed user data does not contain _id.");
+      }
+    } catch (error) {
+      console.error("Error refreshing user data:", error);
+      await logout();
+      throw error;
+    }
   };
 
   const updateUserProfile = async (userId, userData) => {
@@ -84,6 +129,9 @@ export const AuthProvider = ({ children }) => {
       console.log("Dữ liệu JSON gửi đi:", updateData);
 
       const updatedUser = await updateUser(userId, updateData);
+      if (!updatedUser?._id) {
+        throw new Error("Updated user data does not contain _id.");
+      }
       await AsyncStorage.setItem("user", JSON.stringify(updatedUser));
       setUser(updatedUser);
       return updatedUser;
@@ -121,11 +169,13 @@ export const AuthProvider = ({ children }) => {
         token,
         login,
         logout,
+        refreshUser,
         updateUserProfile,
         fetchUserByIdOrEmail,
-        isLoading,
-        searchUsersByQuery, // Add this function
+        searchUsersByQuery,
         searchResults,
+        isLoading,
+        socketConnected,
       }}
     >
       {children}
