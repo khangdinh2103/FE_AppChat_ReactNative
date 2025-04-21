@@ -2,74 +2,135 @@ import io from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_URL = "http://192.168.2.213:5000";
-let socket ;
+let socket = null;
+
+export const getSocket = () => {
+  return socket;
+};
 export const initializeSocket = async () => {
   try {
     const token = await AsyncStorage.getItem('accessToken');
     const user = JSON.parse(await AsyncStorage.getItem('user'));
-    
+
+    console.log('Initializing socket with token:', token ? 'Token exists' : 'No token');
+    console.log('User data for socket:', user ? `User ID: ${user._id}` : 'No user data');
+
+    if (socket && socket.connected) {
+      console.log('Socket already connected:', socket.id);
+      return socket;
+    }
+
+    if (socket) {
+      console.log('Closing existing socket connection');
+      socket.close();
+    }
+
     socket = io(API_URL, {
       auth: { token },
       transports: ['websocket', 'polling'],
       reconnection: true,
-      timeout: 10000
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 10000,
+      forceNew: true
     });
 
-    socket.on('connect', () => {
-      console.log('Socket connected:', socket.id);
-      if (user?._id) {
-        socket.emit('registerUser', user._id);
-      }
+    const connectPromise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Socket connection timeout'));
+      }, 15000);
+
+      socket.on('connect', () => {
+        clearTimeout(timeout);
+        console.log('Socket connected successfully:', socket.id);
+        if (user?._id) {
+          socket.emit('registerUser', user._id);
+        }
+
+        // Move all socket.on handlers here or after await connectPromise
+        socket.on('receiveMessage', (data) => {
+          console.log('Socket received message:', data);
+        });
+
+        socket.on('receiveGroupMessage', (data) => {
+          console.log('Socket received group message:', data);
+        });
+
+        socket.on('messageRevoked', (data) => {
+          console.log('Message revoked:', data);
+        });
+
+        socket.on('newGroupCreated', (data) => {
+          console.log('New group created:', data);
+        });
+
+        socket.on('addedToGroup', (data) => {
+          console.log('Added to group:', data);
+        });
+
+        socket.on('memberAddedToGroup', (data) => {
+          console.log('Member added to group:', data);
+        });
+
+        socket.on('removedFromGroup', (data) => {
+          console.log('Removed from group:', data);
+        });
+
+        socket.on('memberRemovedFromGroup', (data) => {
+          console.log('Member removed from group:', data);
+        });
+
+        socket.on('memberRoleChanged', (data) => {
+          console.log('Member role changed:', data);
+        });
+
+        socket.on('groupUpdated', (data) => {
+          console.log('Group updated:', data);
+        });
+
+        resolve(socket);
+      });
+
+      socket.on('connect_error', (err) => {
+        console.error('Socket connection error:', err.message);
+        clearTimeout(timeout);
+        reject(err);
+      });
+
+      socket.on('disconnect', (reason) => {
+        console.log('Socket disconnected:', reason);
+      });
     });
 
-    // Add specific event logging
-    socket.on('receiveMessage', (data) => {
-      console.log('Socket received message:', data);
-    });
-    
-    // Add group message event logging
-    socket.on('receiveGroupMessage', (data) => {
-      console.log('Socket received group message:', data);
-    });
+    return await connectPromise;
 
-    // Add message revocation event logging
-    socket.on('messageRevoked', (data) => {
-      console.log('Message revoked:', data);
-    });
-    
-    // Add group event logging
-    socket.on('newGroupCreated', (data) => {
-      console.log('New group created:', data);
-    });
-    
-    socket.on('addedToGroup', (data) => {
-      console.log('Added to group:', data);
-    });
-    
-    socket.on('memberAddedToGroup', (data) => {
-      console.log('Member added to group:', data);
-    });
-    
-    socket.on('removedFromGroup', (data) => {
-      console.log('Removed from group:', data);
-    });
-    
-    socket.on('memberRemovedFromGroup', (data) => {
-      console.log('Member removed from group:', data);
-    });
-    
-    socket.on('memberRoleChanged', (data) => {
-      console.log('Member role changed:', data);
-    });
-    
-    socket.on('groupUpdated', (data) => {
-      console.log('Group updated:', data);
-    });
-
-    return socket;
   } catch (error) {
     console.error('Socket initialization error:', error);
+    return null;
   }
+};
+
+
+export const emitMessage = (messageData) => {
+  if (!socket) return;
+  socket.emit('sendMessage', messageData);
+};
+
+export const revokeMessage = (messageId, userId) => {
+  if (!socket) return;
+  socket.emit('revokeMessage', { messageId, userId });
+};
+
+
+
+export const subscribeToTyping = (callback) => {
+  if (!socket) return;
+  socket.on('typing', callback);
+};
+
+export const emitTyping = ({ conversation_id, receiver_id, isTyping }) => {
+  if (!socket) return;
+  socket.emit('typing', { conversation_id, receiver_id, isTyping });
 };
 
 
@@ -113,7 +174,17 @@ export const emitFriendRequest = (requestData) => {
 
 // Group-related socket events
 export const emitCreateGroup = (groupData, creatorId) => {
-  if (!socket) return;
+  if (!socket) {
+    console.error('Socket not initialized when trying to create group');
+    return;
+  }
+  
+  if (!socket.connected) {
+    console.error('Socket not connected when trying to create group');
+    return;
+  }
+  
+  console.log("Emitting createGroup event:", { groupData, creatorId });
   socket.emit('createGroup', { groupData, creatorId });
 };
 
@@ -283,4 +354,50 @@ export const subscribeToMessageRevocation = (callback) => {
   return () => {
     socket.off("messageRevoked");
   };
+};
+
+// Add call-related socket events
+export const emitCallRequest = (callData) => {
+  if (!socket) {
+    console.error('Socket not initialized when trying to send call request');
+    return;
+  }
+  
+  if (!socket.connected) {
+    console.error('Socket not connected when trying to send call request');
+    return;
+  }
+  
+  console.log("Emitting callRequest event:", callData);
+  socket.emit('callRequest', callData);
+};
+
+export const subscribeToCallRequest = (callback) => {
+  if (!socket) return () => {};
+  console.log('Subscribing to call requests');
+  socket.on('callRequest', callback);
+  return () => socket.off('callRequest', callback);
+};
+
+export const emitCallResponse = (responseData) => {
+  if (!socket) return;
+  console.log('Emitting call response:', responseData);
+  socket.emit('callResponse', responseData);
+};
+
+export const subscribeToCallResponse = (callback) => {
+  if (!socket) return () => {};
+  socket.on('callResponse', callback);
+  return () => socket.off('callResponse', callback);
+};
+
+export const emitEndCall = (callData) => {
+  if (!socket) return;
+  socket.emit('endCall', callData);
+};
+
+export const subscribeToEndCall = (callback) => {
+  if (!socket) return () => {};
+  socket.on('endCall', callback);
+  return () => socket.off('endCall', callback);
 };

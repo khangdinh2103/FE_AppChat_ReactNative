@@ -357,8 +357,13 @@ const Contacts = () => {
       const response = await respondToFriendRequest(requestId, 'accepted', user._id);
       if (response.status === 'success') {
         Alert.alert('Thành công', 'Đã chấp nhận lời mời kết bạn');
+        // Update friend requests list and friends list
+        setFriendRequests(prevRequests => 
+          prevRequests.filter(request => request._id !== requestId)
+        );
+        // Fetch updated friends list instead of using fetchData
+        await fetchFriends();
       }
-      fetchFriends();
     } catch (error) {
       console.error('Error accepting friend request:', error);
       if (error.message === 'Không thể khởi tạo socket. Vui lòng kiểm tra kết nối.') {
@@ -368,7 +373,7 @@ const Contacts = () => {
       } else {
         Alert.alert('Lỗi', 'Không thể chấp nhận lời mời kết bạn. Vui lòng thử lại.');
       }
-    }finally {
+    } finally {
       setLoading(false);
     }
   };

@@ -12,7 +12,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { uploadFileToS3 } from '../../services/s3Service';
 import { Video } from 'expo-av';
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
+import { emitCallRequest } from "../../services/socketService";
 const ChatDetail = () => {
   const route = useRoute();
   const navigation = useNavigation();
@@ -52,6 +52,27 @@ const ChatDetail = () => {
       }
     };
   }, [conversationId]);
+  const handleVideoCall = () => {
+    // Generate a unique room name based on conversation ID and timestamp
+    const roomName = `zele_${conversationId || 'private'}_${Date.now()}`;
+    
+    // Notify the other user about the call (if you have socket implementation)
+    if (socketRef.current && receiverId) {
+      emitCallRequest({
+        senderId: user._id,
+        receiverId: receiverId,
+        roomName: roomName,
+        type: 'video'
+      });
+    }
+    
+    // Navigate to the call screen
+    navigation.navigate('CallWebView', { 
+      roomName: roomName,
+      userName: user.name || 'User'
+    });
+  };
+
   
   // Update fetchMessages to handle video messages
   const fetchMessages = async () => {
@@ -773,8 +794,8 @@ const ChatDetail = () => {
             <Ionicons name="call" size={22} color="#0084ff" />
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="videocam" size={22} color="#0084ff" />
+          <TouchableOpacity onPress={handleVideoCall} style={styles.callButton}>
+            <Ionicons name="videocam" size={24} color="#007AFF" />
           </TouchableOpacity>
           
           <TouchableOpacity style={styles.actionButton}>

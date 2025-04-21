@@ -109,51 +109,66 @@ const CreateGroup = () => {
   // Create group
   const handleCreateGroup = async () => {
     try {
+      setLoading(true);
+      
       if (!groupName.trim()) {
         Alert.alert('Lỗi', 'Vui lòng nhập tên nhóm');
+        setLoading(false);
         return;
       }
       
       if (selectedUsers.length === 0) {
         Alert.alert('Lỗi', 'Vui lòng chọn ít nhất một thành viên');
+        setLoading(false);
         return;
       }
-      
-      setLoading(true);
       
       // Upload avatar if selected
       let avatarUrl = null;
       if (groupAvatar) {
-        const fileData = await uploadFileToS3(groupAvatar);
-        avatarUrl = fileData.url;
+        try {
+          avatarUrl = await uploadFileToS3(groupAvatar);
+        } catch (error) {
+          console.error('Error uploading avatar:', error);
+          Alert.alert('Lỗi', 'Không thể tải lên ảnh đại diện. Vui lòng thử lại.');
+          setLoading(false);
+          return;
+        }
       }
+      
+      // Prepare member data
+      const memberIds = selectedUsers.map(user => user._id);
       
       // Create group data
       const groupData = {
-        name: groupName,
-        description: groupDescription,
+        name: groupName.trim(),
+        description: groupDescription.trim(),
         avatar: avatarUrl,
-        members: selectedUsers.map(user => user._id)
+        members: memberIds,
+        creator: user._id
       };
       
-      // Call API to create group
-      const newGroup = await createGroup(groupData);
+      // Create group via API
+      const createdGroup = await createGroup(groupData);
       
-      // Emit socket event
-      emitCreateGroup(groupData, user._id);
+      // IMPORTANT: Remove this line to prevent double creation
+      // emitCreateGroup(groupData, user._id);
       
-      // Navigate to group chat with complete group data
-      navigation.navigate('GroupChatDetail', {
-        group: newGroup,  // Pass the entire group object instead of just individual properties
-        groupId: newGroup._id,
-        groupName: newGroup.name,
-        groupAvatar: newGroup.avatar || null  // Ensure avatar is never undefined
+      // Navigate to the new group chat
+      navigation.navigate('GroupChatDetail', { 
+        group: createdGroup
       });
       
-      Alert.alert('Thành công', 'Đã tạo nhóm chat mới');
+      // Show success message
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Nhóm đã được tạo thành công', ToastAndroid.SHORT);
+      } else {
+        Alert.alert('Thành công', 'Nhóm đã được tạo thành công');
+      }
+      
     } catch (error) {
       console.error('Error creating group:', error);
-      Alert.alert('Lỗi', 'Không thể tạo nhóm: ' + error.message);
+      Alert.alert('Lỗi', error.message || 'Không thể tạo nhóm. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
