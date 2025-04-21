@@ -2,43 +2,29 @@ import io from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_URL = "http://192.168.2.213:5000";
-let socket = null;
-
-export const getSocket = () => {
-  return socket;
-};
-
+let socket ;
 export const initializeSocket = async () => {
   try {
     const token = await AsyncStorage.getItem('accessToken');
-    if (!token) {
-      console.log('No token found for socket initialization');
-      return null;
-    }
-
-    // Check if socket already exists and is connected
-    if (socket && socket.connected) {
-      console.log('Socket already connected:', socket.id);
-      return socket;
-    }
-
-    // Create new socket connection
+    const user = JSON.parse(await AsyncStorage.getItem('user'));
+    
     socket = io(API_URL, {
-      query: { token },
-      transports: ['websocket'],
+      auth: { token },
+      transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
       timeout: 10000
     });
 
-    // Set up event listeners
     socket.on('connect', () => {
-      console.log('Socket connected with ID:', socket.id);
+      console.log('Socket connected:', socket.id);
+      if (user?._id) {
+        socket.emit('registerUser', user._id);
+      }
     });
 
-    socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
+    // Add specific event logging
+    socket.on('receiveMessage', (data) => {
+      console.log('Socket received message:', data);
     });
     
     // Add group message event logging
@@ -46,35 +32,47 @@ export const initializeSocket = async () => {
       console.log('Socket received group message:', data);
     });
 
-    socket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
+    // Add message revocation event logging
+    socket.on('messageRevoked', (data) => {
+      console.log('Message revoked:', data);
     });
-
-    // Wait for connection to establish
-    if (!socket.connected) {
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('Socket connection timeout'));
-        }, 5000);
-
-        socket.once('connect', () => {
-          clearTimeout(timeout);
-          resolve();
-        });
-
-        socket.once('connect_error', (error) => {
-          clearTimeout(timeout);
-          reject(error);
-        });
-      });
-    }
+    
+    // Add group event logging
+    socket.on('newGroupCreated', (data) => {
+      console.log('New group created:', data);
+    });
+    
+    socket.on('addedToGroup', (data) => {
+      console.log('Added to group:', data);
+    });
+    
+    socket.on('memberAddedToGroup', (data) => {
+      console.log('Member added to group:', data);
+    });
+    
+    socket.on('removedFromGroup', (data) => {
+      console.log('Removed from group:', data);
+    });
+    
+    socket.on('memberRemovedFromGroup', (data) => {
+      console.log('Member removed from group:', data);
+    });
+    
+    socket.on('memberRoleChanged', (data) => {
+      console.log('Member role changed:', data);
+    });
+    
+    socket.on('groupUpdated', (data) => {
+      console.log('Group updated:', data);
+    });
 
     return socket;
   } catch (error) {
     console.error('Socket initialization error:', error);
-    return null;
   }
 };
+
+
 
 export const emitSendFriendRequest = (senderId, receiverId, message = "") => {
   if (!socket) {
