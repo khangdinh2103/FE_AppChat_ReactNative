@@ -27,6 +27,7 @@ import {
   subscribeToGroupUpdated,
   revokeMessage,
 } from "../../services/chatService";
+import { Video } from 'expo-av';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 // import * as ImagePicker from "expo-image-picker";
 // import * as DocumentPicker from "expo-document-picker";
