@@ -21,6 +21,8 @@ import {
   subscribeToAllGroupEvents,
 } from "../../services/socketService";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { subscribeToCallRequest, emitCallResponse } from "../../services/socketService";
+
 
 const Home = () => {
   const navigation = useNavigation();
@@ -30,6 +32,57 @@ const Home = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [displayData, setDisplayData] = useState([]);
   const socketRef = useRef(null);
+
+  // Handle incoming call requests
+  useEffect(() => {
+    const unsubscribe = subscribeToCallRequest((callData) => {
+      console.log('Received call request:', callData);
+      
+      // Show an alert for the incoming call
+      Alert.alert(
+        'Incoming Call',
+        `${callData.senderName || 'Someone'} is calling you`,
+        [
+          {
+            text: 'Decline',
+            onPress: () => {
+              // Notify the caller that the call was declined
+              emitCallResponse({
+                senderId: user._id,
+                receiverId: callData.senderId,
+                roomName: callData.roomName,
+                accepted: false
+              });
+            },
+            style: 'cancel',
+          },
+          {
+            text: 'Accept',
+            onPress: () => {
+              // Notify the caller that the call was accepted
+              emitCallResponse({
+                senderId: user._id,
+                receiverId: callData.senderId,
+                roomName: callData.roomName,
+                accepted: true
+              });
+              
+              // Navigate to the call screen
+              navigation.navigate('CallWebView', {
+                roomName: callData.roomName,
+                userName: user.name || 'User'
+              });
+            },
+          },
+        ],
+        { cancelable: false }
+      );
+    });
+    
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [navigation, user]);
 
   // Fetch conversations from API
   const fetchConversations = useCallback(async () => {

@@ -22,6 +22,7 @@ import CreateGroup from "./src/screens/chat/CreateGroup";
 import GroupChatDetail from "./src/screens/chat/GroupChatDetail";
 import GroupInfo from "./src/screens/chat/GroupInfo";
 import { useEffect, useRef } from "react";
+import CallWebView from "./src/screens/call/CallWebView";
 
 // Add this import at the top
 import { setupDeepLinking } from './src/services/linkingService';
@@ -132,6 +133,13 @@ export default function App() {
           />
           
           
+          
+          {/* Add the CallWebView screen */}
+          <Stack.Screen
+            name="CallWebView"
+            component={CallWebView}
+            options={{ headerShown: false }}
+          />
         </Stack.Navigator>
       </NavigationContainer>
     </AuthProvider>
