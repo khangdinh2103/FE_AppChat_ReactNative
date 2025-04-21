@@ -683,19 +683,26 @@ const GroupChatDetail = () => {
   };
 
   // File open handler
-  const handleFileOpen = async (url) => {
-    try {
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert("Lỗi", "Không thể mở nội dung này.");
-      }
-    } catch (error) {
-      console.error("Error opening file:", error);
-      Alert.alert("Lỗi", `Không thể mở nội dung: ${error.message}`);
+ const handleFileOpen = async (url) => {
+  try {
+    if (!url) {
+      Alert.alert("Lỗi", "URL không hợp lệ");
+      return;
     }
-  };
+    
+    console.log("Opening URL:", url);
+    
+    const supported = await Linking.canOpenURL(url);
+    if (supported) {
+      await Linking.openURL(url);
+    } else {
+      Alert.alert("Lỗi", "Không thể mở nội dung này. URL không được hỗ trợ.");
+    }
+  } catch (error) {
+    console.error("Error opening file:", error);
+    Alert.alert("Lỗi", `Không thể mở nội dung: ${error.message}`);
+  }
+};
 
   // Format file size
   const formatFileSize = (bytes) => {
@@ -857,8 +864,14 @@ const GroupChatDetail = () => {
   };
 
   // Render header
+  // Trong renderHeader của GroupChatDetail.js
+// Trong renderHeader của GroupChatDetail.js
   const renderHeader = () => {
-    const isAdmin = groupInfo?.creator_id === user._id || members.some((m) => m.user_id === user._id && m.role === "admin");
+    const isAdmin = groupInfo?.creator_id === user._id || 
+      (members || []).some((m) => 
+        (m.user_id === user._id || m.user?._id === user._id) && m.role === "admin"
+      );
+    
     return (
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -872,7 +885,7 @@ const GroupChatDetail = () => {
               groupName: groupInfo?.name || groupName || "Group Chat",
               groupAvatar: groupInfo?.avatar || groupAvatar,
               members: members || [],
-              isAdmin,
+              isAdmin, // Truyền isAdmin
             })
           }
         >
@@ -899,7 +912,7 @@ const GroupChatDetail = () => {
                 groupName: groupInfo?.name || groupName || "Group Chat",
                 groupAvatar: groupInfo?.avatar || groupAvatar,
                 members: members || [],
-                isAdmin,
+                isAdmin, // Truyền isAdmin
               })
             }
           >
