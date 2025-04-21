@@ -352,12 +352,36 @@ const GroupInfo = () => {
       setSearchLoading(true);
       const results = await searchUsers(query);
       console.log("Search results:", results);
-      const filteredResults = results.filter(
-        result => !members.some(member => member.user_id === result._id || member.user?._id === result._id)
-      ).map(result => ({
-        ...result,
-        name: result.name || result.email || 'Người dùng không xác định',
-      }));
+      
+      // Make sure we're getting proper user objects with _id fields
+      if (!results || !Array.isArray(results)) {
+        console.error('Invalid search results format:', results);
+        setSearchResults([]);
+        return;
+      }
+      
+      // Filter out existing members and format results
+      const filteredResults = results
+        .filter(result => {
+          // Make sure the result has an _id
+          if (!result || !result._id) {
+            console.log('Skipping invalid search result:', result);
+            return false;
+          }
+          
+          // Check if user is already a member
+          return !members.some(member => 
+            member.user_id === result._id || 
+            (member.user && member.user._id === result._id)
+          );
+        })
+        .map(result => ({
+          ...result,
+          name: result.name || result.email || 'Người dùng không xác định',
+          selected: false // Initialize as not selected
+        }));
+      
+      console.log('Filtered search results:', filteredResults);
       setSearchResults(filteredResults);
     } catch (error) {
       console.error('Error searching users:', error);
@@ -375,12 +399,26 @@ const GroupInfo = () => {
         return;
       }
       
+      // Kiểm tra groupId
+      if (!groupId || typeof groupId !== 'string') {
+        Alert.alert('Lỗi', 'ID nhóm không hợp lệ');
+        return;
+      }
+  
       setLoading(true);
       const memberIds = selectedUsers.map(user => user._id);
-      await addGroupMembers(groupId, memberIds);
-      memberIds.forEach(memberId => {
+  
+      // Kiểm tra memberIds
+      if (!memberIds.every(id => id && typeof id === 'string')) {
+        Alert.alert('Lỗi', 'Danh sách ID thành viên không hợp lệ');
+        return;
+      }
+  
+      // Gọi API cho từng memberId
+      for (const memberId of memberIds) {
+        await addGroupMembers(groupId, memberId);
         emitAddMemberToGroup(groupId, memberId, user._id);
-      });
+      }
       
       const newMembers = [
         ...members,
@@ -399,12 +437,11 @@ const GroupInfo = () => {
       Alert.alert('Thành công', 'Đã thêm thành viên vào nhóm');
     } catch (error) {
       console.error('Error adding members:', error);
-      Alert.alert('Lỗi', 'Không thể thêm thành viên: ' + error.message);
+      Alert.alert('Lỗi', 'Không thể thêm thành viên: ' + (error.message || 'Vui lòng thử lại'));
     } finally {
       setLoading(false);
     }
   };
-
   // Remove member from group
   const handleRemoveMember = async (memberId) => {
     try {
@@ -467,6 +504,7 @@ const GroupInfo = () => {
     }
   };
 
+
   // Change member role
   const handleChangeRole = async (memberId, currentRole) => {
     try {
@@ -487,7 +525,6 @@ const GroupInfo = () => {
     }
   };
 
-  // Render member item
   const renderMemberItem = ({ item }) => {
     const member = {
       user_id: item.user?._id || item.user_id || item._id,
@@ -498,6 +535,11 @@ const GroupInfo = () => {
     const isCurrentUser = member.user_id === user._id;
     const isCreator = member.role === 'creator';
     const isAdmin = member.role === 'admin' || isCreator;
+    
+    // Check if current user is admin or creator to manage other members
+    const currentUserMember = normalizedMembers.find(m => m.user_id === user._id);
+    const currentUserIsAdminOrCreator = currentUserMember && 
+      (currentUserMember.role === 'admin' || currentUserMember.role === 'creator');
 
     return (
       <View style={styles.memberItem}>
@@ -518,7 +560,8 @@ const GroupInfo = () => {
           </Text>
         </View>
         
-        {isAdmin && route.params.isAdmin && !isCurrentUser && !isCreator && (
+        {/* Show upgrade/downgrade button if current user is admin/creator and target is not creator */}
+        {currentUserIsAdminOrCreator && !isCreator && !isCurrentUser && (
           <TouchableOpacity 
             style={styles.memberAction}
             onPress={() => handleChangeRole(member.user_id, member.role)}
@@ -529,7 +572,7 @@ const GroupInfo = () => {
           </TouchableOpacity>
         )}
         
-        {(route.params.isAdmin || isCurrentUser) && !isCreator && (
+        {(currentUserIsAdminOrCreator || isCurrentUser) && !isCreator && (
           <TouchableOpacity 
             style={[styles.memberAction, styles.removeAction]}
             onPress={() => handleRemoveMember(member.user_id)}
@@ -542,6 +585,31 @@ const GroupInfo = () => {
       </View>
     );
   };
+
+  // Sửa nút "Sửa" trong phần header
+const renderHeader = () => (
+  <View style={styles.header}>
+    <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+      <Ionicons name="arrow-back" size={24} color="#000" />
+    </TouchableOpacity>
+    <Text style={styles.headerTitle}>Thông tin nhóm</Text>
+    {route.params.isAdmin && (
+      <TouchableOpacity
+        style={styles.editButton}
+        onPress={() =>
+          navigation.navigate('EditGroup', {
+            groupId: route.params.groupId,
+            groupName: groupInfo?.name,
+            groupAvatar: groupInfo?.avatar,
+            description: groupInfo?.description,
+          })
+        }
+      >
+        <Ionicons name="pencil" size={24} color="#007AFF" />
+      </TouchableOpacity>
+    )}
+  </View>
+);
 
   // Add Members Modal
   const renderAddMembersModal = () => (
@@ -565,6 +633,11 @@ const GroupInfo = () => {
           <TouchableOpacity 
             onPress={() => {
               const selectedUsers = searchResults.filter(user => user.selected);
+              console.log('Selected users for adding:', selectedUsers);
+              if (selectedUsers.length === 0) {
+                Alert.alert('Thông báo', 'Vui lòng chọn ít nhất một người dùng');
+                return;
+              }
               handleAddMembers(selectedUsers);
             }}
           >
@@ -588,7 +661,7 @@ const GroupInfo = () => {
         ) : (
           <FlatList
             data={searchResults}
-            keyExtractor={item => item._id}
+            keyExtractor={item => item._id || Math.random().toString()}
             renderItem={({ item }) => {
               const userName = item.name || item.email || 'Người dùng không xác định';
               return (
