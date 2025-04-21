@@ -218,10 +218,15 @@ const Home = () => {
       );
     }
 
-    // Handle group conversations
+    // Trong renderItem của Home.js
     if (item.type === "group") {
-
       console.log("Group conversation data:", item);
+
+      // Kiểm tra quyền admin
+      const isAdmin = item.creator_id === user._id || 
+        (item.members || []).some(m => 
+          (m.user_id === user._id || m.user?._id === user._id) && m.role === "admin"
+        );
 
       return (
         <TouchableOpacity
@@ -232,9 +237,8 @@ const Home = () => {
               groupId: item.group_id || item._id,
               groupName: item.name || "Group Chat",
               groupAvatar: item.avatar || null,
-              // Pass additional data that might be needed
               members: item.members || [],
-              isAdmin: item.creator_id === user._id
+              isAdmin: isAdmin // Truyền isAdmin đã tính toán
             });
           }}
         >

@@ -1,5 +1,9 @@
 import { Linking } from 'react-native';
-
+if (!Linking.removeEventListener) {
+    Linking.removeEventListener = (event, handler) => {
+      console.warn('[Polyfill] Linking.removeEventListener is deprecated. Use subscription.remove() instead.');
+    };
+  }
 // Parse the invite code from a URL
 export const parseInviteCode = (url) => {
   if (!url) return null;

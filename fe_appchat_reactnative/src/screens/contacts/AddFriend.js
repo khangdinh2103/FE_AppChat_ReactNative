@@ -3,9 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, SafeAreaView, Moda
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { AuthContext } from "../../contexts/AuthContext";
 import QRCode from "react-native-qrcode-svg";
-// import { Camera } from "expo-camera";
 import { CameraView, useCameraPermissions } from 'expo-camera';
-
 
 const AddFriend = ({ navigation, route }) => {
   const { user, searchUsersByQuery, searchResults } = useContext(AuthContext);
@@ -20,18 +18,20 @@ const AddFriend = ({ navigation, route }) => {
   const [showJoinGroupModal, setShowJoinGroupModal] = useState(false);
   const [inviteCodeInput, setInviteCodeInput] = useState('');
 
-  // Request Camera permission on component mount
   useEffect(() => {
     const getCameraPermissions = async () => {
       try {
         const { granted } = await requestPermission();
         setHasPermission(granted);
+        if (!granted) {
+          console.log("Camera permission denied");
+        }
       } catch (error) {
         console.error("Error requesting camera permissions:", error);
         setHasPermission(false);
       }
     };
-  
+
     getCameraPermissions();
   }, []);
   
@@ -66,16 +66,17 @@ const AddFriend = ({ navigation, route }) => {
     setShowScanner(false);
     try {
       const userData = JSON.parse(data);
-      console.log("Scanned QR data in AddFriend:", userData); // Add this log
-      
+      console.log("Scanned QR data in AddFriend:", userData);
+
       if (userData.userId && userData.name) {
-        navigation.navigate("AddFriendConfirmation", { 
+        navigation.navigate("AddFriendConfirmation", {
           userData: {
             id: userData.userId,
             name: userData.name,
             phone: userData.phone || "",
-            avatar: userData.avatar // Make sure to include avatar
-          } 
+            avatar: userData.avatar || null,
+            email: userData.email || "",
+          },
         });
       } else {
         alert("Mã QR không hợp lệ");
@@ -85,66 +86,69 @@ const AddFriend = ({ navigation, route }) => {
       alert("Mã QR không hợp lệ");
     }
   };
-  
 
   const handleShowMyQR = () => {
     setShowQR(true);
   };
 
-  // Add effect to handle search query from QR scanner
-  // Update the useEffect that handles route params
   useEffect(() => {
     if (route.params?.searchQuery) {
       setSearchValue(route.params.searchQuery);
-  
-      // Auto search if requested
+
       if (route.params.autoSearch) {
         handleSearch(route.params.searchQuery);
       }
-      
-      // If we have userData from QR scan, navigate directly to confirmation
+
       if (route.params.userData) {
-        navigation.navigate("AddFriendConfirmation", { 
-          userData: route.params.userData 
+        navigation.navigate("AddFriendConfirmation", {
+          userData: route.params.userData,
         });
       }
-  
-      // Clear the params to prevent repeated searches
-      navigation.setParams({ 
-        searchQuery: undefined, 
+
+      navigation.setParams({
+        searchQuery: undefined,
         autoSearch: undefined,
-        userData: undefined 
+        userData: undefined,
       });
     }
   }, [route.params]);
 
-  // Update handleSearch to accept an optional parameter
   const handleSearch = async (queryOverride) => {
     const query = queryOverride || searchValue;
 
     if (!query.trim()) {
-      setError("Vui lòng nhập tên hoặc email");
+      setError("Vui lòng nhập tên, email hoặc số điện thoại");
+      setSearchData([]);
       return;
     }
 
     try {
       const results = await searchUsersByQuery(query);
-      setSearchData(
-        results.map((user) => ({
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone || "",
-          avatar: user.primary_avatar || "",
-        }))
-      );
-      setError("");
-      console.log("Search results:", results);
-
+      if (Array.isArray(results)) {
+        setSearchData(
+          results.map((user) => ({
+            id: user._id,
+            name: user.name,
+            email: user.email || "",
+            phone: user.phone || "",
+            avatar: user.primary_avatar || null,
+          }))
+        );
+        setError("");
+        console.log("Search results:", results);
+      } else {
+        throw new Error("Dữ liệu trả về không hợp lệ");
+      }
     } catch (error) {
       console.error("Search error:", error);
-      
-      setError("Có lỗi xảy ra khi tìm kiếm");
+      if (error.message.includes('Máy chủ trả về định dạng không hợp lệ')) {
+        setError('Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại sau.');
+      } else if (error.message.includes('Network Error') || error.code === 'ECONNABORTED') {
+        setError('Lỗi kết nối mạng. Vui lòng kiểm tra kết nối internet của bạn và thử lại.');
+      } else {
+        setError(error.message || "Có lỗi xảy ra khi tìm kiếm. Vui lòng thử lại.");
+      }
+      setSearchData([]);
     }
   };
 
@@ -155,33 +159,35 @@ const AddFriend = ({ navigation, route }) => {
 
     return (
       <View style={styles.searchResults}>
-        {searchData.map((item) => (
-          
-          <TouchableOpacity
-            key={item.id}
-            style={styles.resultItem}
-            onPress={() => navigation.navigate("AddFriendConfirmation", { userData: item })}
-          >
-            {item.avatar ? (
-              <Image source={{ uri: item.avatar }} style={styles.resultAvatar} />
-            ) : (
-              <View style={[styles.resultAvatar, styles.avatarPlaceholder]}>
-                <Text style={styles.avatarText}>{item.name.charAt(0)}</Text>
+        {searchData.length > 0 ? (
+          searchData.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.resultItem}
+              onPress={() => navigation.navigate("AddFriendConfirmation", { userData: item })}
+            >
+              {item.avatar ? (
+                <Image source={{ uri: item.avatar }} style={styles.resultAvatar} />
+              ) : (
+                <View style={[styles.resultAvatar, styles.avatarPlaceholder]}>
+                  <Text style={styles.avatarText}>{item.name?.charAt(0) || '?'}</Text>
+                </View>
+              )}
+              <View style={styles.resultInfo}>
+                <Text style={styles.resultName}>{item.name || 'Người dùng'}</Text>
+                <Text style={styles.resultEmail}>{item.phone || item.email || 'Không có thông tin'}</Text>
               </View>
-            )}
-            <View style={styles.resultInfo}>
-              <Text style={styles.resultName}>{item.name}</Text>
-              <Text style={styles.resultEmail}>{item.email || item.phone}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+            </TouchableOpacity>
+          ))
+        ) : (
+          <Text style={styles.noResultsText}>Không tìm thấy kết quả nào</Text>
+        )}
       </View>
     );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={28} color="#000" />
@@ -191,11 +197,9 @@ const AddFriend = ({ navigation, route }) => {
 
       <Text style={styles.description}>Nhập email hoặc số điện thoại để tìm bạn bè</Text>
 
-      {/* Input Section */}
       <View style={styles.inputSection}>
         <View style={[styles.inputContainer, error && styles.inputError]}>
           <Ionicons name="search-outline" size={20} color="#666" />
-          {/* Update the TextInput onChangeText handler to trigger search as user types */}
           <TextInput
             style={styles.input}
             placeholder="Nhập email hoặc số điện thoại"
@@ -204,10 +208,8 @@ const AddFriend = ({ navigation, route }) => {
               setSearchValue(text);
               setError("");
               if (text.trim().length > 0) {
-                // Auto-search after user types
                 handleSearch(text);
               } else {
-                // Clear search results when input is empty
                 setSearchData([]);
               }
             }}
@@ -215,13 +217,12 @@ const AddFriend = ({ navigation, route }) => {
           />
         </View>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
+        <TouchableOpacity style={styles.searchButton} onPress={() => handleSearch()}>
           <Text style={styles.searchButtonText}>Tìm kiếm</Text>
         </TouchableOpacity>
       </View>
       {renderSearchResults()}
 
-      {/* QR Code Modal */}
       <Modal animationType="slide" transparent={true} visible={showQR} onRequestClose={() => setShowQR(false)}>
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
@@ -230,13 +231,13 @@ const AddFriend = ({ navigation, route }) => {
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Mã QR của bạn</Text>
             <View style={styles.qrContainer}>
-              {/* Update the QR code value to include avatar */}
               <QRCode
                 value={JSON.stringify({
                   userId: user?._id,
                   name: user?.name,
-                  phone: user?.phone,
-                  avatar: user?.primary_avatar // Make sure this property name matches what you use elsewhere
+                  phone: user?.phone || "",
+                  email: user?.email || "",
+                  avatar: user?.primary_avatar || null,
                 })}
                 size={200}
               />
@@ -246,7 +247,6 @@ const AddFriend = ({ navigation, route }) => {
         </View>
       </Modal>
 
-      {/* QR Scanner Modal */}
       <Modal animationType="slide" transparent={false} visible={showScanner} onRequestClose={() => setShowScanner(false)}>
         <SafeAreaView style={styles.scannerContainer}>
           <View style={styles.scannerHeader}>
@@ -267,7 +267,6 @@ const AddFriend = ({ navigation, route }) => {
           ) : hasPermission === false ? (
             <Text style={styles.permissionText}>Không có quyền truy cập camera. Vui lòng cấp quyền trong cài đặt.</Text>
           ) : (
-            // Hiển thị giao diện camera khi quyền được cấp
             <View style={styles.scanner}>
               <CameraView
                 style={StyleSheet.absoluteFillObject}
@@ -277,14 +276,11 @@ const AddFriend = ({ navigation, route }) => {
                 }}
                 onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
               />
-
             </View>
           )}
-
         </SafeAreaView>
       </Modal>
 
-      {/* Options List */}
       <View style={styles.optionsList}>
         <TouchableOpacity style={styles.option}>
           <Ionicons name="people-outline" size={24} color="#1a75ff" />
@@ -300,10 +296,9 @@ const AddFriend = ({ navigation, route }) => {
           <Ionicons name="scan-outline" size={24} color="#1a75ff" />
           <Text style={styles.optionText}>Quét mã QR</Text>
         </TouchableOpacity>
-        
-        {/* Thêm tùy chọn Tạo nhóm */}
-        <TouchableOpacity 
-          style={styles.option} 
+
+        <TouchableOpacity
+          style={styles.option}
           onPress={() => navigation.navigate("CreateGroup")}
         >
           <Ionicons name="people" size={24} color="#1a75ff" />
@@ -486,35 +481,9 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: '#000',
   },
-  scannerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginLeft: 16,
-  },
   scanner: {
     flex: 1,
     position: 'relative',
-  },
-  scannerOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scannerFrame: {
-    width: 250,
-    height: 250,
-    borderWidth: 2,
-    borderColor: '#4E7DFF',
-    backgroundColor: 'transparent',
-    borderRadius: 20,
-  },
-  scannerText: {
-    color: '#fff',
-    fontSize: 16,
-    marginTop: 20,
-    textAlign: 'center',
-    paddingHorizontal: 40,
   },
   permissionText: {
     color: '#fff',
@@ -569,6 +538,11 @@ const styles = StyleSheet.create({
   textAlign: 'center',
   marginBottom: 16,
   marginTop: -8,
+  },
+  noResultsText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
   },
 });
 

@@ -420,9 +420,9 @@ const GroupInfo = () => {
               onPress: async () => {
                 try {
                   setLoading(true);
-                  await leaveGroup(groupId);
+                  await removeGroupMember(groupId, memberId);
                   emitRemoveMemberFromGroup(groupId, user._id, user._id);
-                  navigation.navigate('Home');
+                  navigation.navigate('MyTabs', { screen: 'Chat' });
                   Alert.alert('Thành công', 'Bạn đã rời khỏi nhóm');
                 } catch (error) {
                   console.error('Error leaving group:', error);

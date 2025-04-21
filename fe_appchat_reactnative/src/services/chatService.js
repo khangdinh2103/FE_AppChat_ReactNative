@@ -329,3 +329,23 @@ export const checkConversationWithFriend = async (friendId, userId) => {
     // throw error;
   }
 };
+
+export const leaveGroup = async (groupId) => {
+  try {
+    const token = await AsyncStorage.getItem("accessToken");
+    if (!token) {
+      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
+    }
+    // Remove duplicate /api/group
+    const response = await axios.delete(`${API_URL}/${groupId}/leave`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error("❌ Lỗi khi rời nhóm:", error.response?.data || error.message);
+    throw error.response?.data || { message: error.message || "Lỗi không xác định" };
+  }
+};

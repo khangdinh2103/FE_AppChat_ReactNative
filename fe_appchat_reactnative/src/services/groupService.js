@@ -19,6 +19,7 @@ export const setupGroupInterceptor = (token) => {
     (error) => Promise.reject(error)
   );
 };
+
 // Create a new group
 // Update the createGroup function to use the correct endpoint
 export const createGroup = async (groupData) => {
@@ -31,11 +32,11 @@ export const createGroup = async (groupData) => {
     
     const response = await axios.post(`${API_URL}/create`, groupData, {  // This will now be /api/group/create
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
+      timeout: 10000,
     });
-    
+
     if (response.data.status === "success") {
       const group = response.data.data.group;
       return {
@@ -43,8 +44,14 @@ export const createGroup = async (groupData) => {
         name: group.name || "Unnamed Group",
         avatar: group.avatar || null,
         description: group.description || "",
-        members: group.members || [],
-        creator_id: group.creator || null
+        members: (group.members || []).map(member => ({
+          user_id: member.user?._id || member.user_id || "",
+          name: member.user?.name || member.name || "Unknown",
+          avatar: member.user?.primary_avatar || member.avatar || null,
+          role: member.role || "member",
+          joined_at: member.joined_at || new Date().toISOString(),
+        })),
+        creator_id: group.creator?._id || group.creator || null,
       };
     } else {
       throw new Error(response.data.message || "Tạo nhóm thất bại");
@@ -70,14 +77,30 @@ export const getGroupDetails = async (groupId) => {
       headers: {
         Authorization: `Bearer ${token}`,
       },
+      timeout: 10000,
     });
 
     if (response.data.status !== 'success') {
       throw new Error(response.data.message || 'Không thể lấy thông tin nhóm.');
     }
 
+    const group = response.data.data;
     console.log('Group details response:', response.data);
-    return response.data.data;
+    return {
+      _id: group._id,
+      name: group.name || "Unnamed Group",
+      avatar: group.avatar || null,
+      description: group.description || "",
+      creator_id: group.creator?._id || group.creator_id || null,
+      conversation_id: group.conversation_id || null,
+      members: (group.members || []).map(member => ({
+        user_id: member.user?._id || member.user_id || "",
+        name: member.user?.name || member.name || "Unknown",
+        avatar: member.user?.primary_avatar || member.avatar || null,
+        role: member.role || "member",
+        joined_at: member.joined_at || new Date().toISOString(),
+      })),
+    };
   } catch (error) {
     console.error('Error fetching group details:', error.response?.data || error.message);
     throw error;
@@ -86,18 +109,10 @@ export const getGroupDetails = async (groupId) => {
 // Get all groups for current user
 export const getUserGroups = async () => {
   try {
-    const token = await AsyncStorage.getItem("accessToken");
-    
-    if (!token) {
-      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
-    }
-    
-    const response = await axios.get(`${API_URL}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+    const response = await groupApi.get("/", {
+      timeout: 10000,
     });
-    
+
     if (response.data.status === "success") {
       return response.data.data.map(group => ({
         ...group,
@@ -105,12 +120,13 @@ export const getUserGroups = async () => {
         avatar: group.avatar || null,
         description: group.description || "",
         members: (group.members || []).map(member => ({
-          user_id: member.user?._id || "",
-          name: member.user?.name || "Unknown",
-          avatar: member.user?.primary_avatar || null,
-          role: member.role || "member"
+          user_id: member.user?._id || member.user_id || "",
+          name: member.user?.name || member.name || "Unknown",
+          avatar: member.user?.primary_avatar || member.avatar || null,
+          role: member.role || "member",
+          joined_at: member.joined_at || new Date().toISOString(),
         })),
-        creator_id: group.creator?._id || null
+        creator_id: group.creator?._id || group.creator_id || null,
       }));
     } else {
       throw new Error(response.data.message || "Lấy danh sách nhóm thất bại");
@@ -122,48 +138,51 @@ export const getUserGroups = async () => {
 };
 
 // Add members to group
-export const addGroupMembers = async (groupId, memberIds) => {
+export const addGroupMembers = async (groupId, memberId) => {
   try {
-    const token = await AsyncStorage.getItem("accessToken");
-    
+    const token = await AsyncStorage.getItem('accessToken');
     if (!token) {
-      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
+      throw new Error('Không tìm thấy token. Vui lòng đăng nhập lại.');
     }
-    
-    const response = await axios.post(`${API_URL}/member/add`, { groupId, memberIds }, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    });
-    
-    if (response.data.status === "success") {
-      return response.data.data;
-    } else {
-      throw new Error(response.data.message || "Thêm thành viên thất bại");
+    if (!groupId || typeof groupId !== 'string') {
+      throw new Error('groupId không hợp lệ.');
     }
+    if (!memberId || typeof memberId !== 'string') {
+      throw new Error('ID thành viên không hợp lệ.');
+    }
+
+    const response = await groupApi.post(
+      `/member/add`, // Đường dẫn API đúng với Postman
+      { groupId, memberId }, // Gửi groupId và memberId trong body
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        timeout: 10000,
+      }
+    );
+
+    if (response.data.status !== 'success') {
+      throw new Error(response.data.message || 'Không thể thêm thành viên.');
+    }
+
+    return response.data.data;
   } catch (error) {
-    console.error("❌ Lỗi khi thêm thành viên:", error.response?.data || error.message);
-    throw error.response?.data || { message: error.message || "Lỗi không xác định" };
+    console.error('Error adding group members:', error.response?.data || error.message);
+    throw error;
   }
 };
 
 // Remove member from group
 export const removeGroupMember = async (groupId, memberId) => {
   try {
-    const token = await AsyncStorage.getItem("accessToken");
-    
-    if (!token) {
-      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
-    }
-    
-    const response = await axios.post(`${API_URL}/member/remove`, { groupId, memberId }, {
+    const response = await groupApi.post("/member/remove", { groupId, memberId }, {
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
+      timeout: 10000,
     });
-    
+
     if (response.data.status === "success") {
       return response.data.data;
     } else {
@@ -178,19 +197,13 @@ export const removeGroupMember = async (groupId, memberId) => {
 // Update member role
 export const updateMemberRole = async (groupId, memberId, role) => {
   try {
-    const token = await AsyncStorage.getItem("accessToken");
-    
-    if (!token) {
-      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
-    }
-    
-    const response = await axios.put(`${API_URL}/member/role`, { groupId, memberId, role }, {
+    const response = await groupApi.put("/member/role", { groupId, memberId, role }, {
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
+      timeout: 10000,
     });
-    
+
     if (response.data.status === "success") {
       return response.data.data;
     } else {
@@ -205,19 +218,13 @@ export const updateMemberRole = async (groupId, memberId, role) => {
 // Update group info
 export const updateGroupInfo = async (groupId, groupData) => {
   try {
-    const token = await AsyncStorage.getItem("accessToken");
-    
-    if (!token) {
-      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
-    }
-    
-    const response = await axios.put(`${API_URL}/${groupId}`, groupData, {
+    const response = await groupApi.put(`/${groupId}`, groupData, {
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
+      timeout: 10000,
     });
-    
+
     if (response.data.status === "success") {
       return response.data.data;
     } else {
@@ -388,5 +395,25 @@ export const joinGroupViaLink = async (inviteCode) => {
       console.error('Error message:', error.message);
     }
     throw error;
+  }
+};
+// Leave group
+export const leaveGroup = async (groupId) => {
+  try {
+    const response = await groupApi.post("/leave", { groupId }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+      timeout: 10000,
+    });
+
+    if (response.data.status === "success") {
+      return response.data.data;
+    } else {
+      throw new Error(response.data.message || "Rời nhóm thất bại");
+    }
+  } catch (error) {
+    console.error("❌ Lỗi khi rời nhóm:", error.response?.data || error.message);
+    throw error.response?.data || { message: error.message || "Lỗi không xác định" };
   }
 };
