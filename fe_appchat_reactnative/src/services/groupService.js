@@ -2,7 +2,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Update the API_URL to include the correct endpoint
-const API_URL = "http://192.168.1.117:5000/api/group";  // Add /api/group
+const API_URL = "http://192.168.2.213:5000/api/group";  // Add /api/group
 const groupApi = axios.create({
   baseURL: API_URL,
 });
@@ -266,7 +266,7 @@ export const getGroupInviteLink = async (groupId) => {
       else if (data.invite_link && data.invite_link.code) {
         // Construct the URL from the invite code
         const inviteCode = data.invite_link.code;
-        const url = `http://192.168.1.117:5000/api/group/join/${inviteCode}`;
+        const url = `http://192.168.2.213:5000/api/group/join/${inviteCode}`;
         return {
           data: {
             status: "success",
@@ -325,6 +325,68 @@ export const updateInviteLinkStatus = async (groupId, isActive) => {
     return response;
   } catch (error) {
     console.error("Error updating invite link status:", error);
+    throw error;
+  }
+};
+
+// Update this function to use GET instead of POST and fix the URL format
+// Update this function to better handle errors and provide more debugging information
+// Update this function to handle the "already a member" case
+export const joinGroupViaLink = async (inviteCode) => {
+  try {
+    const token = await AsyncStorage.getItem("accessToken");
+    
+    if (!token) {
+      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
+    }
+    
+    console.log(`Attempting to join group with invite code: ${inviteCode}`);
+    
+    // Add timeout and validate parameters
+    const response = await axios.get(`${API_URL}/join/${inviteCode}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      timeout: 10000, // 10 second timeout
+      validateStatus: function (status) {
+        // Accept all status codes to handle them manually
+        return true;
+      }
+    });
+    
+    console.log('Join group response:', JSON.stringify(response.data));
+    
+    // Handle the "already a member" case
+    if (response.status === 500 && 
+        response.data.message && 
+        response.data.message.includes("đã là thành viên")) {
+      // Return a formatted response for the already-member case
+      return {
+        status: "info",
+        message: response.data.message,
+        data: {
+          alreadyMember: true
+        }
+      };
+    }
+    
+    if (response.data.status === "success") {
+      return response.data;
+    } else {
+      throw new Error(response.data.message || "Không thể tham gia nhóm");
+    }
+  } catch (error) {
+    // Enhanced error logging
+    console.error('Error joining group via link:', error);
+    if (error.response) {
+      console.error('Error response data:', JSON.stringify(error.response.data));
+      console.error('Error response status:', error.response.status);
+    } else if (error.request) {
+      console.error('Error request:', JSON.stringify(error.request));
+    } else {
+      console.error('Error message:', error.message);
+    }
     throw error;
   }
 };
