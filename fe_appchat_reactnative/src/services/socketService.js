@@ -1,7 +1,7 @@
 import io from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = "http://192.168.2.213:5000";
+const API_URL = "http://192.168.2.74:5000";
 let socket ;
 export const initializeSocket = async () => {
   try {
@@ -283,4 +283,31 @@ export const subscribeToMessageRevocation = (callback) => {
   return () => {
     socket.off("messageRevoked");
   };
+};
+
+// Add this after the other group-related socket events
+export const emitDeleteGroup = (groupId, userId) => {
+  if (!socket) {
+    console.error('Socket not initialized when trying to delete group');
+    return;
+  }
+  
+  if (!socket.connected) {
+    console.error('Socket not connected when trying to delete group');
+    return;
+  }
+  
+  console.log("Emitting deleteGroup event:", { groupId, userId });
+  socket.emit('deleteGroup', { groupId, userId });
+};
+
+export const subscribeToGroupDeleted = (callback) => {
+  if (!socket) return () => {};
+  
+  socket.on('groupDeleted', (data) => {
+    console.log('Group deleted event received:', data);
+    callback(data);
+  });
+  
+  return () => socket.off('groupDeleted');
 };
