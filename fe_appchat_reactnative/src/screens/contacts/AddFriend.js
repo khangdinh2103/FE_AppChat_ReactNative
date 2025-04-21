@@ -17,6 +17,8 @@ const AddFriend = ({ navigation, route }) => {
   const [scanned, setScanned] = useState(false);
   const [searchData, setSearchData] = useState([]);
   const [permission, requestPermission] = useCameraPermissions();
+  const [showJoinGroupModal, setShowJoinGroupModal] = useState(false);
+  const [inviteCodeInput, setInviteCodeInput] = useState('');
 
   // Request Camera permission on component mount
   useEffect(() => {
@@ -33,9 +35,32 @@ const AddFriend = ({ navigation, route }) => {
     getCameraPermissions();
   }, []);
   
+  // Handle joining a group via invite code
+  const handleJoinGroup = () => {
+    setShowJoinGroupModal(true);
+  };
   
+  // Process the invite code and navigate to GroupInviteScreen
+  const processInviteCode = (code) => {
+    if (!code || code.trim() === '') {
+      setError("Vui lòng nhập mã mời hoặc link mời");
+      return;
+    }
+    
+    // Extract code from link if it's a full URL
+    let inviteCode = code;
+    if (code.includes('/join/')) {
+      inviteCode = code.split('/join/').pop();
+    }
+    
+    // Navigate to the invite screen with the code
+    navigation.navigate('GroupInvite', { inviteCode });
+    
+    // Reset the input
+    setInviteCodeInput('');
+    setShowJoinGroupModal(false);
+  };
   
-
   const handleBarCodeScanned = ({ type, data }) => {
     setScanned(true);
     setShowScanner(false);
@@ -284,7 +309,57 @@ const AddFriend = ({ navigation, route }) => {
           <Ionicons name="people" size={24} color="#1a75ff" />
           <Text style={styles.optionText}>Tạo nhóm</Text>
         </TouchableOpacity>
+        
+        {/* Thêm tùy chọn Tham gia nhóm bằng mã mời */}
+        <TouchableOpacity 
+          style={styles.option} 
+          onPress={handleJoinGroup}
+        >
+          <Ionicons name="enter-outline" size={24} color="#1a75ff" />
+          <Text style={styles.optionText}>Tham gia nhóm bằng mã mời</Text>
+        </TouchableOpacity>
       </View>
+      
+      {/* Join Group Modal */}
+      <Modal
+        visible={showJoinGroupModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowJoinGroupModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <TouchableOpacity 
+              style={styles.closeButton} 
+              onPress={() => {
+                setShowJoinGroupModal(false);
+                setInviteCodeInput('');
+              }}
+            >
+              <Ionicons name="close" size={24} color="#000" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Tham gia nhóm</Text>
+            <Text style={styles.qrDescription}>Nhập mã mời hoặc dán link mời vào đây:</Text>
+            
+            <TextInput
+              style={styles.inviteInput}
+              value={inviteCodeInput}
+              onChangeText={setInviteCodeInput}
+              placeholder="Mã mời hoặc link"
+              autoCapitalize="none"
+            />
+            
+            <TouchableOpacity 
+              style={styles.joinGroupButton}
+              onPress={() => processInviteCode(inviteCodeInput)}
+            >
+              <Text style={styles.joinGroupButtonText}>Tham gia</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ... existing modals ... */}
     </SafeAreaView>
   );
 };
@@ -486,6 +561,14 @@ const styles = StyleSheet.create({
   resultEmail: {
     fontSize: 14,
     color: '#666',
+  },
+  // In the styles object
+  inviteHint: {
+  fontSize: 12,
+  color: '#666',
+  textAlign: 'center',
+  marginBottom: 16,
+  marginTop: -8,
   },
 });
 

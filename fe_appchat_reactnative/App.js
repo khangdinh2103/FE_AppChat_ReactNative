@@ -21,13 +21,32 @@ import { AuthProvider } from "./src/contexts/AuthContext";
 import CreateGroup from "./src/screens/chat/CreateGroup";
 import GroupChatDetail from "./src/screens/chat/GroupChatDetail";
 import GroupInfo from "./src/screens/chat/GroupInfo";
+import { useEffect, useRef } from "react";
+
+// Add this import at the top
+import { setupDeepLinking } from './src/services/linkingService';
+import GroupInviteScreen from './src/screens/chat/GroupInviteScreen';
 
 const Stack = createNativeStackNavigator();
 
 export default function App() {
+  const navigationRef = useRef();
+  
+  useEffect(() => {
+    // Set up deep linking
+    if (navigationRef.current) {
+      const cleanupDeepLinks = setupDeepLinking(navigationRef.current);
+      
+      // Clean up when component unmounts
+      return () => {
+        cleanupDeepLinks();
+      };
+    }
+  }, [navigationRef.current]);
+  
   return (
     <AuthProvider>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <Stack.Navigator initialRouteName="Started">
           <Stack.Screen
             name="Started"
@@ -106,6 +125,13 @@ export default function App() {
             component={GroupInfo} 
             options={{ headerShown: false }} 
           />
+          <Stack.Screen 
+            name="GroupInvite" 
+            component={GroupInviteScreen} 
+            options={{ headerShown: false }} 
+          />
+          
+          
         </Stack.Navigator>
       </NavigationContainer>
     </AuthProvider>

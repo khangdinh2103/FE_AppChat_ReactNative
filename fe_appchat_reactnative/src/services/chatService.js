@@ -2,7 +2,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import io from "socket.io-client";
 
-const API_URL = "http://192.168.1.117:5000";
+const API_URL = "http://192.168.2.213:5000";
 
 const chatApi = axios.create({
   baseURL: API_URL,
