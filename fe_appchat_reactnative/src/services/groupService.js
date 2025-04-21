@@ -2,7 +2,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Update the API_URL to include the correct endpoint
-const API_URL = "http://192.168.2.213:5000/api/group";  // Add /api/group
+const API_URL = "http://192.168.2.74:5000/api/group";  // Add /api/group
 const groupApi = axios.create({
   baseURL: API_URL,
 });
@@ -273,7 +273,7 @@ export const getGroupInviteLink = async (groupId) => {
       else if (data.invite_link && data.invite_link.code) {
         // Construct the URL from the invite code
         const inviteCode = data.invite_link.code;
-        const url = `http://192.168.2.213:5000/api/group/join/${inviteCode}`;
+        const url = `http://192.168.2.74:5000/api/group/join/${inviteCode}`;
         return {
           data: {
             status: "success",
@@ -414,6 +414,38 @@ export const leaveGroup = async (groupId) => {
     }
   } catch (error) {
     console.error("❌ Lỗi khi rời nhóm:", error.response?.data || error.message);
+    throw error.response?.data || { message: error.message || "Lỗi không xác định" };
+  }
+};
+
+// Delete a group
+export const deleteGroup = async (groupId) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    
+    if (!token) {
+      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
+    }
+    
+    const response = await axios.delete(`${API_URL}/${groupId}`, {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      timeout: 10000,
+    });
+
+    if (response.data.status === "success") {
+      return {
+        status: 'success',
+        message: response.data.message || 'Đã xóa nhóm thành công',
+        data: response.data.data
+      };
+    } else {
+      throw new Error(response.data.message || "Xóa nhóm thất bại");
+    }
+  } catch (error) {
+    console.error("❌ Lỗi khi xóa nhóm:", error.response?.data || error.message);
     throw error.response?.data || { message: error.message || "Lỗi không xác định" };
   }
 };

@@ -28,7 +28,7 @@ import {
   subscribeToMemberAddedToGroup,
   subscribeToMemberRemovedFromGroup,
   subscribeToGroupUpdated,
-  revokeMessage,
+  revokeMessage,subscribeToGroupDeleted
 } from "../../services/socketService";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -141,12 +141,24 @@ const GroupChatDetail = () => {
           }
         });
 
+        const unsubscribeGroupDeleted = subscribeToGroupDeleted((data) => {
+          if (data.groupId === groupId) {
+            // Group was deleted, show notification and navigate back
+            Alert.alert(
+              "Thông báo",
+              "Nhóm đã bị xóa bởi quản trị viên",
+              [{ text: "OK", onPress: () => navigation.navigate("Home") }]
+            );
+          }
+        });
+
         return () => {
           socketInstance.off("receiveGroupMessage");
           leaveGroupRoom(groupId);
           unsubscribeMemberAdded();
           unsubscribeMemberRemoved();
           unsubscribeGroupUpdated();
+          unsubscribeGroupDeleted();
         };
       }
     };
