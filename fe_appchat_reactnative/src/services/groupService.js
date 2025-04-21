@@ -1,7 +1,7 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const API_URL = "http://192.168.2.72:5000/api/group";
+const API_URL = "http://192.168.2.213:5000/api/group";
 const groupApi = axios.create({
   baseURL: API_URL,
 });
