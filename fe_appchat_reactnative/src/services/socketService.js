@@ -401,3 +401,34 @@ export const subscribeToEndCall = (callback) => {
   socket.on('endCall', callback);
   return () => socket.off('endCall', callback);
 };
+// Add this after the other group-related socket events
+export const emitDeleteGroup = (groupId, userId) => {
+  if (!socket) {
+    console.error('Socket not initialized when trying to delete group');
+    return;
+  }
+  
+  if (!socket.connected) {
+    console.error('Socket not connected when trying to delete group');
+    return;
+  }
+  
+  try {
+    console.log("Emitting deleteGroup event:", { groupId, userId });
+    socket.emit('deleteGroup', { groupId, userId });
+  } catch (error) {
+    console.error('Error emitting deleteGroup event:', error);
+    // Don't throw the error, just log it
+  }
+};
+
+export const subscribeToGroupDeleted = (callback) => {
+  if (!socket) return () => {};
+  
+  socket.on('groupDeleted', (data) => {
+    console.log('Group deleted event received:', data);
+    callback(data);
+  });
+  
+  return () => socket.off('groupDeleted');
+};

@@ -417,3 +417,42 @@ export const leaveGroup = async (groupId) => {
     throw error.response?.data || { message: error.message || "Lỗi không xác định" };
   }
 };
+
+// Delete a group
+export const deleteGroup = async (groupId) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    
+    if (!token) {
+      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
+    }
+    
+    const response = await axios.delete(`${API_URL}/${groupId}`, {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      timeout: 10000,
+      validateStatus: function (status) {
+        // Accept all status codes to handle them manually
+        return true;
+      }
+    });
+
+    console.log("Delete group response:", JSON.stringify(response.data));
+
+    // Handle both success and error cases from the API
+    if (response.data.status === "success") {
+      return {
+        status: 'success',
+        message: response.data.message || 'Đã xóa nhóm thành công',
+        data: response.data.data
+      };
+    } else {
+      throw new Error(response.data.message || "Xóa nhóm thất bại");
+    }
+  } catch (error) {
+    console.error("❌ Lỗi khi xóa nhóm:", error.response?.data || error.message);
+    throw error.response?.data || { message: error.message || "Lỗi không xác định" };
+  }
+};

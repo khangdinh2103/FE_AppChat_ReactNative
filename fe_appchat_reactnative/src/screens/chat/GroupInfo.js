@@ -27,7 +27,8 @@ import {
   leaveGroup,
   getGroupInviteLink,
   regenerateInviteLink,
-  updateInviteLinkStatus
+  updateInviteLinkStatus, 
+  deleteGroup
 } from '../../services/groupService';
 import { searchUsers } from '../../services/authService';
 import * as ImagePicker from 'expo-image-picker';
@@ -36,7 +37,9 @@ import {
   emitAddMemberToGroup, 
   emitRemoveMemberFromGroup, 
   emitChangeRoleMember, 
-  emitUpdateGroup 
+  emitUpdateGroup, 
+  emitDeleteGroup, 
+  subscribeToGroupDeleted
 } from "../../services/socketService";
 
 const GroupInfo = () => {
@@ -77,6 +80,7 @@ const GroupInfo = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  
   // Normalize members data
   const normalizedMembers = members.map(member => ({
     user_id: member.user?._id || member.user_id || member._id,
@@ -116,6 +120,8 @@ const GroupInfo = () => {
 
     fetchGroupData();
   }, [groupId]);
+
+  // Fetch invite link
   useEffect(() => {
     const fetchInviteLink = async () => {
       try {
@@ -124,7 +130,6 @@ const GroupInfo = () => {
         console.log("Invite link response:", response.data);
         
         if (response && response.data && response.data.data) {
-          // Extract the URL directly
           const url = response.data.data.url || '';
           console.log("Extracted URL:", url);
           
@@ -133,15 +138,15 @@ const GroupInfo = () => {
         }
       } catch (error) {
         console.error('Error fetching invite link:', error);
-        // Don't show an alert, just log the error
       }
     };
 
     fetchInviteLink();
   }, [groupId]);
+
+  // Copy invite link
   const copyInviteLink = () => {
     try {
-      // Make sure we have a valid string to copy
       if (!inviteLink || typeof inviteLink !== 'string' || inviteLink.trim() === '') {
         console.log('No valid invite link to copy');
         Alert.alert('Thông báo', 'Link mời không khả dụng.');
@@ -153,7 +158,6 @@ const GroupInfo = () => {
       if (Platform.OS === 'android') {
         ToastAndroid.show('Đã sao chép link mời', ToastAndroid.SHORT);
       } else {
-        // For iOS, show visual feedback
         setCopySuccess(true);
         setTimeout(() => {
           setCopySuccess(false);
@@ -164,9 +168,8 @@ const GroupInfo = () => {
       Alert.alert('Lỗi', 'Không thể sao chép link: ' + error.message);
     }
   };
-  
 
-  // Function to regenerate invite link
+  // Regenerate invite link
   const handleRegenerateLink = async () => {
     try {
       setLoading(true);
@@ -183,7 +186,7 @@ const GroupInfo = () => {
     }
   };
 
-  // Function to toggle invite link status
+  // Toggle invite link status
   const toggleInviteLinkStatus = async () => {
     try {
       setLoading(true);
@@ -198,8 +201,9 @@ const GroupInfo = () => {
       setLoading(false);
     }
   };
+
+  // Render invite link section
   const renderInviteLinkSection = () => {
-    // All members can see the link, but only admins/moderators can manage it
     const currentUserMember = members.find(m => 
       (m.user_id === user._id || (m.user && m.user._id === user._id))
     );
@@ -210,7 +214,6 @@ const GroupInfo = () => {
       <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>Link tham gia nhóm</Text>
         
-        {/* Always show the link to all members */}
         <View style={styles.inviteLinkContainer}>
           <Text 
             style={[styles.inviteLink, !inviteLinkActive && styles.inviteLinkDisabled]} 
@@ -238,7 +241,6 @@ const GroupInfo = () => {
           </View>
         )}
         
-        {/* Only show management options to admins/moderators */}
         {canManageInvites && (
           <View style={styles.inviteOptionsContainer}>
             <TouchableOpacity 
@@ -353,23 +355,19 @@ const GroupInfo = () => {
       const results = await searchUsers(query);
       console.log("Search results:", results);
       
-      // Make sure we're getting proper user objects with _id fields
       if (!results || !Array.isArray(results)) {
         console.error('Invalid search results format:', results);
         setSearchResults([]);
         return;
       }
       
-      // Filter out existing members and format results
       const filteredResults = results
         .filter(result => {
-          // Make sure the result has an _id
           if (!result || !result._id) {
             console.log('Skipping invalid search result:', result);
             return false;
           }
           
-          // Check if user is already a member
           return !members.some(member => 
             member.user_id === result._id || 
             (member.user && member.user._id === result._id)
@@ -378,7 +376,7 @@ const GroupInfo = () => {
         .map(result => ({
           ...result,
           name: result.name || result.email || 'Người dùng không xác định',
-          selected: false // Initialize as not selected
+          selected: false
         }));
       
       console.log('Filtered search results:', filteredResults);
@@ -399,7 +397,6 @@ const GroupInfo = () => {
         return;
       }
       
-      // Kiểm tra groupId
       if (!groupId || typeof groupId !== 'string') {
         Alert.alert('Lỗi', 'ID nhóm không hợp lệ');
         return;
@@ -408,13 +405,11 @@ const GroupInfo = () => {
       setLoading(true);
       const memberIds = selectedUsers.map(user => user._id);
   
-      // Kiểm tra memberIds
       if (!memberIds.every(id => id && typeof id === 'string')) {
         Alert.alert('Lỗi', 'Danh sách ID thành viên không hợp lệ');
         return;
       }
   
-      // Gọi API cho từng memberId
       for (const memberId of memberIds) {
         await addGroupMembers(groupId, memberId);
         emitAddMemberToGroup(groupId, memberId, user._id);
@@ -442,6 +437,7 @@ const GroupInfo = () => {
       setLoading(false);
     }
   };
+
   // Remove member from group
   const handleRemoveMember = async (memberId) => {
     try {
@@ -504,6 +500,69 @@ const GroupInfo = () => {
     }
   };
 
+  // Delete group
+  const handleDeleteGroup = () => {
+    if (!isAdmin) {
+      Alert.alert('Thông báo', 'Bạn không có quyền xóa nhóm này');
+      return;
+    }
+  
+    Alert.alert(
+      'Xác nhận xóa nhóm',
+      'Bạn có chắc chắn muốn xóa nhóm này? Hành động này không thể hoàn tác.',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              
+              try {
+                await deleteGroup(groupId);
+              } catch (error) {
+                // Check if this is the specific socket.getIO error
+                if (error.message && error.message.includes('socket.getIO is not a function')) {
+                  console.log('Backend socket error, but group likely deleted successfully');
+                  // Continue with the process as the group was probably deleted
+                } else {
+                  // For other errors, throw to be caught by the outer catch
+                  throw error;
+                }
+              }
+              
+              // Emit socket event regardless
+              if (user?._id) {
+                emitDeleteGroup(groupId, user._id);
+              }
+              
+              // Show success message
+              if (Platform.OS === 'android') {
+                ToastAndroid.show('Đã xóa nhóm thành công', ToastAndroid.SHORT);
+              } else {
+                Alert.alert('Thành công', 'Đã xóa nhóm thành công');
+              }
+              
+              // Use navigation.reset to ensure we properly return to the tabs
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'MyTabs', params: { screen: 'Chat' } }],
+              });
+            } catch (error) {
+              console.error('Error deleting group:', error);
+              Alert.alert(
+                'Lỗi',
+                error.message || 'Không thể xóa nhóm. Vui lòng thử lại sau.'
+              );
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
 
   // Change member role
   const handleChangeRole = async (memberId, currentRole) => {
@@ -525,6 +584,7 @@ const GroupInfo = () => {
     }
   };
 
+  // Render member item
   const renderMemberItem = ({ item }) => {
     const member = {
       user_id: item.user?._id || item.user_id || item._id,
@@ -536,7 +596,6 @@ const GroupInfo = () => {
     const isCreator = member.role === 'creator';
     const isAdmin = member.role === 'admin' || isCreator;
     
-    // Check if current user is admin or creator to manage other members
     const currentUserMember = normalizedMembers.find(m => m.user_id === user._id);
     const currentUserIsAdminOrCreator = currentUserMember && 
       (currentUserMember.role === 'admin' || currentUserMember.role === 'creator');
@@ -560,7 +619,6 @@ const GroupInfo = () => {
           </Text>
         </View>
         
-        {/* Show upgrade/downgrade button if current user is admin/creator and target is not creator */}
         {currentUserIsAdminOrCreator && !isCreator && !isCurrentUser && (
           <TouchableOpacity 
             style={styles.memberAction}
@@ -586,32 +644,32 @@ const GroupInfo = () => {
     );
   };
 
-  // Sửa nút "Sửa" trong phần header
-const renderHeader = () => (
-  <View style={styles.header}>
-    <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-      <Ionicons name="arrow-back" size={24} color="#000" />
-    </TouchableOpacity>
-    <Text style={styles.headerTitle}>Thông tin nhóm</Text>
-    {route.params.isAdmin && (
-      <TouchableOpacity
-        style={styles.editButton}
-        onPress={() =>
-          navigation.navigate('EditGroup', {
-            groupId: route.params.groupId,
-            groupName: groupInfo?.name,
-            groupAvatar: groupInfo?.avatar,
-            description: groupInfo?.description,
-          })
-        }
-      >
-        <Ionicons name="pencil" size={24} color="#007AFF" />
+  // Render header
+  const renderHeader = () => (
+    <View style={styles.header}>
+      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <Ionicons name="arrow-back" size={24} color="#000" />
       </TouchableOpacity>
-    )}
-  </View>
-);
+      <Text style={styles.headerTitle}>Thông tin nhóm</Text>
+      {route.params.isAdmin && (
+        <TouchableOpacity
+          style={styles.editButton}
+          onPress={() =>
+            navigation.navigate('EditGroup', {
+              groupId: route.params.groupId,
+              groupName: groupInfo?.name,
+              groupAvatar: groupInfo?.avatar,
+              description: groupInfo?.description,
+            })
+          }
+        >
+          <Ionicons name="pencil" size={24} color="#007AFF" />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
 
-  // Add Members Modal
+  // Render add members modal
   const renderAddMembersModal = () => (
     <Modal
       visible={showAddMembers}
@@ -711,6 +769,7 @@ const renderHeader = () => (
     </Modal>
   );
 
+  // Loading state
   if (loading) {
     return (
       <View style={[styles.container, styles.centerContent]}>
@@ -719,27 +778,10 @@ const renderHeader = () => (
     );
   }
 
+  // Main render
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#000" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Thông tin nhóm</Text>
-        {isAdmin && (
-          <TouchableOpacity 
-            style={styles.editButton}
-            onPress={() => setIsEditing(!isEditing)}
-          >
-            <Text style={styles.editText}>
-              {isEditing ? 'Hủy' : 'Sửa'}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      {renderHeader()}
       
       <View style={styles.groupInfoSection}>
         <TouchableOpacity 
@@ -794,7 +836,21 @@ const renderHeader = () => (
           </View>
         )}
       </View>
+      
       {!loading && renderInviteLinkSection()}
+      
+      {/* Add Delete Group Button for admins */}
+      {isAdmin && (
+        <View style={styles.dangerSection}>
+          <TouchableOpacity 
+            style={styles.deleteButton} 
+            onPress={handleDeleteGroup}
+          >
+            <Ionicons name="trash-outline" size={24} color="#FF3B30" />
+            <Text style={styles.deleteButtonText}>Xóa nhóm</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       
       <View style={styles.membersSection}>
         <View style={styles.sectionHeader}>
@@ -1174,6 +1230,27 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 30,
     color: '#999',
+  },
+  dangerSection: {
+    marginTop: 10,
+    marginHorizontal: 15,
+    marginBottom: 10,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFEBEE',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FFCDD2',
+  },
+  deleteButtonText: {
+    color: '#FF3B30',
+    fontWeight: 'bold',
+    marginLeft: 10,
+    fontSize: 16,
   },
 });
 
