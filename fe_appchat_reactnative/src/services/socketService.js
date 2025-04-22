@@ -1,7 +1,7 @@
 import io from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = "http://192.168.2.74:5000";
+const API_URL = "http://192.168.2.213:5000";
 let socket ;
 export const initializeSocket = async () => {
   try {
@@ -297,8 +297,13 @@ export const emitDeleteGroup = (groupId, userId) => {
     return;
   }
   
-  console.log("Emitting deleteGroup event:", { groupId, userId });
-  socket.emit('deleteGroup', { groupId, userId });
+  try {
+    console.log("Emitting deleteGroup event:", { groupId, userId });
+    socket.emit('deleteGroup', { groupId, userId });
+  } catch (error) {
+    console.error('Error emitting deleteGroup event:', error);
+    // Don't throw the error, just log it
+  }
 };
 
 export const subscribeToGroupDeleted = (callback) => {

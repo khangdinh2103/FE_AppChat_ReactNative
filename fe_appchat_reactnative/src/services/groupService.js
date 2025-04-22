@@ -2,7 +2,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Update the API_URL to include the correct endpoint
-const API_URL = "http://192.168.2.74:5000/api/group";  // Add /api/group
+const API_URL = "http://192.168.2.213:5000/api/group";  // Add /api/group
 const groupApi = axios.create({
   baseURL: API_URL,
 });
@@ -273,7 +273,7 @@ export const getGroupInviteLink = async (groupId) => {
       else if (data.invite_link && data.invite_link.code) {
         // Construct the URL from the invite code
         const inviteCode = data.invite_link.code;
-        const url = `http://192.168.2.74:5000/api/group/join/${inviteCode}`;
+        const url = `http://192.168.2.213:5000/api/group/join/${inviteCode}`;
         return {
           data: {
             status: "success",
@@ -433,8 +433,15 @@ export const deleteGroup = async (groupId) => {
         "Content-Type": "application/json",
       },
       timeout: 10000,
+      validateStatus: function (status) {
+        // Accept all status codes to handle them manually
+        return true;
+      }
     });
 
+    console.log("Delete group response:", JSON.stringify(response.data));
+
+    // Handle both success and error cases from the API
     if (response.data.status === "success") {
       return {
         status: 'success',
