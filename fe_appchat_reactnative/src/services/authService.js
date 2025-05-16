@@ -1,8 +1,8 @@
 import axios from "axios";
 
-const API_URL = "http://172.28.61.56:5000/api/auth"; // Đổi URL theo backend
+const API_URL = "http://192.168.1.9:5000/api/auth"; // Đổi URL theo backend
 import AsyncStorage from "@react-native-async-storage/async-storage";
-const USER_API_URL = "http://172.28.61.56:5000/api/user";
+const USER_API_URL = "http://192.168.1.9:5000/api/user";
 
 export const registerUser = async (userData) => {
   try {
