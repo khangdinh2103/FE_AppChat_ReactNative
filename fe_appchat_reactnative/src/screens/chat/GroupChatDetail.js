@@ -113,47 +113,40 @@ const GroupChatDetail = () => {
     const setupSocket = async () => {
       try {
         const socketInstance = await initializeSocket();
+        
+        // Check if we already have a socket reference and clean it up if needed
+        if (socketRef.current) {
+          console.log("Cleaning up previous socket connection");
+          socketRef.current.off("receiveGroupMessage");
+          socketRef.current.off("messageRevoked");
+          if (groupId) {
+            socketRef.current.emit("leaveGroupRoom", { groupId });
+          }
+        }
+        
         socketRef.current = socketInstance;
   
         if (socketInstance) {
-          // Xóa các listener cũ để tránh trùng lặp
+          // Ensure we're not duplicating listeners
           socketInstance.off("receiveGroupMessage");
           socketInstance.off("messageRevoked");
           
-          // Thêm listener với logging đầy đủ
+          // Add listeners with proper logging
           socketInstance.on("receiveGroupMessage", (data) => {
-            console.log("Received group message:", data);
+            console.log(`Received group message in room ${groupId}:`, data);
             handleReceiveMessage(data);
           });
           
           socketInstance.on("messageRevoked", (data) => {
-            console.log("Received message revoked event:", data);
-            // Use inline function instead of the callback to ensure we're using the latest state
-            if (data.messageId) {
-              console.log("Updating local messages for revoked messageId:", data.messageId);
-              
-              setMessages(prevMessages => 
-                prevMessages.map(msg => {
-                  if (msg._id === data.messageId) {
-                    console.log("Found message to revoke in local state:", msg._id);
-                    console.log("Message revoked:", data);
-                    return { 
-                      ...msg, 
-                      text: "Tin nhắn đã được thu hồi", 
-                      revoked: true, 
-                      image: null, 
-                      video: null, 
-                      file: null 
-                    };
-                  }
-                  return msg;
-                })
-              );
-            }
+            console.log(`Received message revoked event in room ${groupId}:`, data);
+            handleMessageRevoked(data);
           });
           
-          console.log("Joining group room:", groupId);
-          joinGroupRoom(groupId);
+          // Make sure we're properly joining the group room
+          console.log(`Joining group room: ${groupId}`);
+          socketInstance.emit("joinGroupRoom", { groupId }, (response) => {
+            console.log(`Join group room response:`, response);
+          });
         }
       } catch (error) {
         console.error("Error setting up socket:", error);
@@ -166,21 +159,23 @@ const GroupChatDetail = () => {
   
     return () => {
       if (socketRef.current) {
-        console.log("Cleaning up socket listeners");
+        console.log(`Leaving group room: ${groupId}`);
+        socketRef.current.emit("leaveGroupRoom", { groupId });
         socketRef.current.off("receiveGroupMessage");
         socketRef.current.off("messageRevoked");
-        if (groupId) {
-          socketRef.current.emit("leaveGroupRoom", { groupId });
-        }
       }
     };
   }, [groupId]);
 
   // Handle receiving messages
-  const handleReceiveMessage = (data) => {
+  const handleReceiveMessage = useCallback((data) => {
     const { message, conversationId: msgConvId } = data;
+    
+    console.log(`Processing received message for conversation ${msgConvId}, our conversation: ${conversationId}`);
+    
+    // Make sure this message is for our conversation and not already deleted
     if (msgConvId === conversationId && !deletedMessageIds.includes(message._id)) {
-      console.log("Received message:", message);
+      console.log("Processing message:", message);
       
       // Find the member who sent this message
       const memberInfo = members.find(m => 
@@ -219,11 +214,17 @@ const GroupChatDetail = () => {
 
       setMessages((prevMessages) => {
         const messageExists = prevMessages.some((msg) => msg._id === formattedMessage._id);
-        if (messageExists) return prevMessages;
+        if (messageExists) {
+          console.log(`Message ${formattedMessage._id} already exists, not adding again`);
+          return prevMessages;
+        }
+        console.log(`Adding new message ${formattedMessage._id} to chat`);
         return GiftedChat.append(prevMessages, [formattedMessage]);
       });
+    } else {
+      console.log(`Ignoring message: either wrong conversation (${msgConvId} vs ${conversationId}) or deleted`);
     }
-  };
+  }, [conversationId, deletedMessageIds, members]);
   // Message subscription
   useEffect(() => {
     const unsubscribeGroupMessages = subscribeToGroupMessages(handleReceiveMessage);
@@ -340,7 +341,8 @@ const GroupChatDetail = () => {
     }
   }, []);
   // Send message
-  const onSend = useCallback(
+   // Send message
+   const onSend = useCallback(
     async (newMessages = []) => {
       let tempMessage = null;
       try {
@@ -370,11 +372,13 @@ const GroupChatDetail = () => {
   
         const response = await sendGroupMessage(messageData);
         if (response.data.status === "success") {
-          // Change emitMessage to emitGroupMessage
+          // Emit message to all members in the group
+          console.log("Emitting group message to room:", groupId);
           emitGroupMessage({ 
             message: response.data.data, 
             groupId,
-            conversationId 
+            conversationId,
+            senderId: user._id  // Add sender ID for better tracking
           });
   
           const confirmedMessage = {
@@ -408,7 +412,6 @@ const GroupChatDetail = () => {
     },
     [conversationId, groupId, user]
   );
-
   
     // Send media
     const handleSendMedia = async (mediaType, fileUri, fileName, fileType, fileSize) => {
@@ -992,6 +995,7 @@ const GroupChatDetail = () => {
     );
   };
 
+  
   return (
     <View style={styles.container}>
       {renderHeader()}
