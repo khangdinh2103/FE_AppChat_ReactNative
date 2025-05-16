@@ -159,30 +159,31 @@ const ChatDetail = () => {
           { maxWidth: containerWidth + 10 }
         ]}
       >
-        <View style={styles.imageGridContainer}>
-          {images.map((imageUrl, index) => (
-            <TouchableOpacity 
-              key={`grid-image-${index}-${currentMessage._id}`}
-              onPress={() => handleFileOpen(imageUrl)}
-              style={{
-                width: imageSize,
-                height: imageSize,
-                margin: 2,
-                borderRadius: 4,
-                overflow: 'hidden'
-              }}
-            >
-              <Image
-                source={{ uri: imageUrl }}
-                style={{ 
-                  width: '100%', 
-                  height: '100%'
-                }}
-                resizeMode="cover"
-              />
-            </TouchableOpacity>
-          ))}
-        </View>
+        <TouchableOpacity
+          onLongPress={() => onLongPress(null, currentMessage)}
+          delayLongPress={500}
+        >
+          <View style={styles.imageGridContainer}>
+            {images.map((imageUrl, index) => (
+              <TouchableOpacity 
+                key={`grid-image-${index}-${currentMessage._id}`}
+                onPress={() => handleFileOpen(imageUrl)}
+              >
+                <Image
+                  source={{ uri: imageUrl }}
+                  style={{ 
+                    width: imageSize, 
+                    height: imageSize,
+                    margin: 2,
+                    borderRadius: 4,
+                    overflow: 'hidden'
+                  }}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -636,7 +637,15 @@ const ChatDetail = () => {
       setMessages(prevMessages => 
         prevMessages.map(msg => 
           msg._id === data.messageId 
-            ? { ...msg, text: "Tin nhắn đã được thu hồi", revoked: true } 
+            ? { 
+                ...msg, 
+                text: "Tin nhắn đã được thu hồi", 
+                revoked: true,
+                image: null,
+                video: null,
+                file: null,
+                imageGrid: null
+              } 
             : msg
         )
       );
@@ -758,7 +767,7 @@ const ChatDetail = () => {
       );
     }
   
-    // Nếu là hình ảnh
+    // Nếu là lưới hình ảnh
     if (currentMessage.imageGrid && Array.isArray(currentMessage.imageGrid) && currentMessage.imageGrid.length > 0) {
       return renderMessageImageGrid(props);
     }
@@ -772,7 +781,11 @@ const ChatDetail = () => {
             currentMessage.user._id === user._id ? styles.mediaBubbleRight : styles.mediaBubbleLeft,
           ]}
         >
-          <TouchableOpacity onPress={() => handleFileOpen(currentMessage.image)}>
+          <TouchableOpacity 
+            onPress={() => handleFileOpen(currentMessage.image)}
+            onLongPress={() => onLongPress(null, currentMessage)}
+            delayLongPress={500}
+          >
             <Image
               source={{ uri: currentMessage.image }}
               style={styles.media}
@@ -782,51 +795,58 @@ const ChatDetail = () => {
       );
     }
 
-  // Nếu là video
-  if (currentMessage.video) {
-    return (
-      <View style={{ padding: 10 }}>
-        <Video
-          source={{ uri: currentMessage.video }}
-          loop={false}
-          autoPlay={false}
-          controls
-          rate={1.0}
-          volume={1.0}
-          isMuted={false}
-          resizeMode="contain"
-          shouldPlay={false}
-          useNativeControls
-          style={{ width: 180, height: 180, borderRadius: 10 }}
-        />
-      </View>
-    );
-  }
+    // Nếu là video
+    if (currentMessage.video) {
+      return (
+        <View style={{ padding: 10 }}>
+          <TouchableOpacity
+            onLongPress={() => onLongPress(null, currentMessage)}
+            delayLongPress={500}
+          >
+            <Video
+              source={{ uri: currentMessage.video }}
+              loop={false}
+              autoPlay={false}
+              controls
+              rate={1.0}
+              volume={1.0}
+              isMuted={false}
+              resizeMode="contain"
+              shouldPlay={false}
+              useNativeControls
+              style={{ width: 180, height: 180, borderRadius: 10 }}
+            />
+          </TouchableOpacity>
+        </View>
+      );
+    }
 
-  // Nếu là file
-  if (currentMessage.file) {
-    return (
-      <View style={styles.fileBubble}>
-        <TouchableOpacity
-          style={styles.fileContainer}
-          onPress={() => handleFileOpen(currentMessage.file.url)}
-        >
-          <View style={styles.fileIconContainer}>
-            <Ionicons name="document-text" size={30} color="#fff" />
-          </View>
-          <View style={styles.fileInfo}>
-            <Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">
-              {currentMessage.file.file_name}
-            </Text>
-            <Text style={styles.fileSize}>
-              {formatFileSize(currentMessage.file.file_size)}
-            </Text>
-          </View>
-          <Ionicons name="open-outline" size={24} color="#0084ff" />
-        </TouchableOpacity>
-      </View>
-    );
-  }
+    // Nếu là file
+    if (currentMessage.file) {
+      return (
+        <View style={styles.fileBubble}>
+          <TouchableOpacity
+            style={styles.fileContainer}
+            onPress={() => handleFileOpen(currentMessage.file.url)}
+            onLongPress={() => onLongPress(null, currentMessage)}
+            delayLongPress={500}
+          >
+            <View style={styles.fileIconContainer}>
+              <Ionicons name="document-text" size={30} color="#fff" />
+            </View>
+            <View style={styles.fileInfo}>
+              <Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">
+                {currentMessage.file.file_name}
+              </Text>
+              <Text style={styles.fileSize}>
+                {formatFileSize(currentMessage.file.file_size)}
+              </Text>
+            </View>
+            <Ionicons name="open-outline" size={24} color="#0084ff" />
+          </TouchableOpacity>
+        </View>
+      );
+    }
   
     return (
       <Bubble
