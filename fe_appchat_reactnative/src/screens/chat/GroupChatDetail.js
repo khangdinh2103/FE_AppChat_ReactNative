@@ -50,6 +50,7 @@ const GroupChatDetail = () => {
   const groupName = group?.name || routeGroupName;
   const groupAvatar = group?.avatar || routeGroupAvatar;
 
+  const [selectedMessage, setSelectedMessage] = useState(null);
   const { user } = useContext(AuthContext);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -110,80 +111,130 @@ const GroupChatDetail = () => {
   // Socket setup
   useEffect(() => {
     const setupSocket = async () => {
-      const socketInstance = await initializeSocket();
-      socketRef.current = socketInstance;
-
-      if (socketInstance) {
-        socketInstance.off("receiveGroupMessage");
-        socketInstance.on("receiveGroupMessage", handleReceiveMessage);
-
-        joinGroupRoom(groupId);
-
-        const unsubscribeMemberAdded = subscribeToMemberAddedToGroup((data) => {
-          if (data.groupId === groupId) {
-            fetchGroupData();
-          }
-        });
-
-        const unsubscribeMemberRemoved = subscribeToMemberRemovedFromGroup((data) => {
-          if (data.groupId === groupId) {
-            fetchGroupData();
-            if (data.memberId === user._id) {
-              Alert.alert("Thông báo", "Bạn đã bị xóa khỏi nhóm");
-              navigation.navigate("Home");
-            }
-          }
-        });
-
-        const unsubscribeGroupUpdated = subscribeToGroupUpdated((data) => {
-          if (data.groupId === groupId) {
-            fetchGroupData();
-          }
-        });
-
-        const unsubscribeGroupDeleted = subscribeToGroupDeleted((data) => {
-          if (data.groupId === groupId) {
-            // Group was deleted, show notification and navigate back
-            Alert.alert(
-              "Thông báo",
-              "Nhóm đã bị xóa bởi quản trị viên",
-              [{ text: "OK", onPress: () => navigation.navigate("Home") }]
-            );
-          }
-        });
-
-        return () => {
+      try {
+        const socketInstance = await initializeSocket();
+        socketRef.current = socketInstance;
+  
+        if (socketInstance) {
+          // Xóa các listener cũ để tránh trùng lặp
           socketInstance.off("receiveGroupMessage");
-          leaveGroupRoom(groupId);
-          unsubscribeMemberAdded();
-          unsubscribeMemberRemoved();
-          unsubscribeGroupUpdated();
-          unsubscribeGroupDeleted();
-        };
+          socketInstance.off("messageRevoked");
+          
+          // Thêm listener với logging đầy đủ
+          socketInstance.on("receiveGroupMessage", (data) => {
+            console.log("Received group message:", data);
+            handleReceiveMessage(data);
+          });
+          
+          socketInstance.on("messageRevoked", (data) => {
+            console.log("Received message revoked event:", data);
+            // Use inline function instead of the callback to ensure we're using the latest state
+            if (data.messageId) {
+              console.log("Updating local messages for revoked messageId:", data.messageId);
+              
+              setMessages(prevMessages => 
+                prevMessages.map(msg => {
+                  if (msg._id === data.messageId) {
+                    console.log("Found message to revoke in local state:", msg._id);
+                    console.log("Message revoked:", data);
+                    return { 
+                      ...msg, 
+                      text: "Tin nhắn đã được thu hồi", 
+                      revoked: true, 
+                      image: null, 
+                      video: null, 
+                      file: null 
+                    };
+                  }
+                  return msg;
+                })
+              );
+            }
+          });
+          
+          console.log("Joining group room:", groupId);
+          joinGroupRoom(groupId);
+        }
+      } catch (error) {
+        console.error("Error setting up socket:", error);
       }
     };
-
-    setupSocket();
-
+  
+    if (groupId) {
+      setupSocket();
+    }
+  
     return () => {
       if (socketRef.current) {
+        console.log("Cleaning up socket listeners");
         socketRef.current.off("receiveGroupMessage");
-        socketRef.current.emit("leaveGroupRoom", { groupId });
+        socketRef.current.off("messageRevoked");
+        if (groupId) {
+          socketRef.current.emit("leaveGroupRoom", { groupId });
+        }
       }
     };
-  }, [groupId, user._id]);
+  }, [groupId]);
 
+  // Handle receiving messages
+  const handleReceiveMessage = (data) => {
+    const { message, conversationId: msgConvId } = data;
+    if (msgConvId === conversationId && !deletedMessageIds.includes(message._id)) {
+      console.log("Received message:", message);
+      
+      // Find the member who sent this message
+      const memberInfo = members.find(m => 
+        m.user._id === message.sender_id || 
+        (m.user._id && message.sender_id && m.user._id === message.sender_id._id)
+      );
+      
+      // Ensure we have the correct sender ID format
+      const senderId = typeof message.sender_id === 'object' ? message.sender_id._id : message.sender_id;
+      
+      const formattedMessage = {
+        _id: message._id,
+        createdAt: new Date(message.timestamp),
+        user: {
+          _id: senderId,
+          name: memberInfo?.user?.name || message.sender_name || "Unknown",
+          avatar: memberInfo?.user?.primary_avatar || message.sender_avatar || null,
+        },
+      };
+      
+      console.log("Formatted message user:", formattedMessage.user);
+      
+      if (message.is_revoked) {
+        formattedMessage.text = "Tin nhắn đã được thu hồi";
+        formattedMessage.revoked = true;
+      } else if (message.message_type === "image") {
+        formattedMessage.image = message.content;
+      } else if (message.message_type === "video") {
+        formattedMessage.video = message.content;
+      } else if (message.message_type === "file") {
+        formattedMessage.text = message.file_meta?.file_name || "File";
+        formattedMessage.file = message.file_meta;
+      } else {
+        formattedMessage.text = message.content;
+      }
+
+      setMessages((prevMessages) => {
+        const messageExists = prevMessages.some((msg) => msg._id === formattedMessage._id);
+        if (messageExists) return prevMessages;
+        return GiftedChat.append(prevMessages, [formattedMessage]);
+      });
+    }
+  };
   // Message subscription
   useEffect(() => {
     const unsubscribeGroupMessages = subscribeToGroupMessages(handleReceiveMessage);
     const unsubscribeMessageRevocation = subscribeToMessageRevocation(handleMessageRevoked);
-
+  
     return () => {
       if (unsubscribeGroupMessages) unsubscribeGroupMessages();
       if (unsubscribeMessageRevocation) unsubscribeMessageRevocation();
     };
-  }, [messages]);
-
+  }, [handleReceiveMessage]);
+  
   // Fetch messages
   const fetchMessages = async (convId) => {
     try {
@@ -258,77 +309,36 @@ const GroupChatDetail = () => {
     }
   };
 
-  // Handle receiving messages
-  const handleReceiveMessage = (data) => {
-    const { message, conversationId: msgConvId } = data;
-    if (msgConvId === conversationId && !deletedMessageIds.includes(message._id)) {
-      console.log("Received message:", message);
-      
-      // Find the member who sent this message
-      const memberInfo = members.find(m => 
-        m.user._id === message.sender_id || 
-        (m.user._id && message.sender_id && m.user._id === message.sender_id._id)
-      );
-      
-      // Ensure we have the correct sender ID format
-      const senderId = typeof message.sender_id === 'object' ? message.sender_id._id : message.sender_id;
-      
-      const formattedMessage = {
-        _id: message._id,
-        createdAt: new Date(message.timestamp),
-        user: {
-          _id: senderId,
-          name: memberInfo?.user?.name || message.sender_name || "Unknown",
-          avatar: memberInfo?.user?.primary_avatar || message.sender_avatar || null,
-        },
-      };
-      
-      console.log("Formatted message user:", formattedMessage.user);
-      
-      if (message.is_revoked) {
-        formattedMessage.text = "Tin nhắn đã được thu hồi";
-        formattedMessage.revoked = true;
-      } else if (message.message_type === "image") {
-        formattedMessage.image = message.content;
-      } else if (message.message_type === "video") {
-        formattedMessage.video = message.content;
-      } else if (message.message_type === "file") {
-        formattedMessage.text = message.file_meta?.file_name || "File";
-        formattedMessage.file = message.file_meta;
-      } else {
-        formattedMessage.text = message.content;
-      }
-
-      setMessages((prevMessages) => {
-        const messageExists = prevMessages.some((msg) => msg._id === formattedMessage._id);
-        if (messageExists) return prevMessages;
-        return GiftedChat.append(prevMessages, [formattedMessage]);
-      });
-    }
-  };
+  
 
   // Handle revoked messages
-  const handleMessageRevoked = (data) => {
-    console.log("Message revoked event received:", data);
+  const handleMessageRevoked = useCallback((data) => {
+    console.log("Message revoked in group chat, received data:", data);
     
+    // Kiểm tra cả conversationId và groupId
     if (data.messageId) {
-      setMessages((prevMessages) =>
-        prevMessages.map((msg) =>
-          msg._id === data.messageId
-            ? { 
-                ...msg, 
-                text: "Tin nhắn đã được thu hồi", 
-                revoked: true,
-                image: null,
-                video: null,
-                file: null
-              }
-            : msg
-        )
+      console.log("Updating local messages for revoked messageId:", data.messageId);
+      
+      setMessages(prevMessages => 
+        prevMessages.map(msg => {
+          if (msg._id === data.messageId) {
+            console.log("Found message to revoke in local state:", msg._id);
+            return { 
+              ...msg, 
+              text: "Tin nhắn đã được thu hồi", 
+              revoked: true, 
+              image: null, 
+              video: null, 
+              file: null 
+            };
+          }
+          return msg;
+        })
       );
+    } else {
+      console.log("Ignoring revoke event - no messageId provided");
     }
-  };
-
+  }, []);
   // Send message
   const onSend = useCallback(
     async (newMessages = []) => {
@@ -399,6 +409,7 @@ const GroupChatDetail = () => {
     [conversationId, groupId, user]
   );
 
+  
     // Send media
     const handleSendMedia = async (mediaType, fileUri, fileName, fileType, fileSize) => {
       let tempMessage = null;
@@ -617,7 +628,7 @@ const GroupChatDetail = () => {
     try {
       console.log("Attempting to revoke message:", messageId);
       
-      // Check if the message exists and belongs to the user
+      // Kiểm tra tin nhắn tồn tại và thuộc về người dùng
       const messageToRevoke = messages.find(msg => msg._id === messageId);
       if (!messageToRevoke) {
         throw new Error("Tin nhắn không tồn tại");
@@ -627,11 +638,7 @@ const GroupChatDetail = () => {
         throw new Error("Bạn không thể thu hồi tin nhắn của người khác");
       }
       
-      // Call the API to revoke the message
-      const response = await revokeMessage(messageId);
-      console.log("Revoke message response:", response);
-      
-      // Update the message in the local state regardless of response
+      // Cập nhật UI ngay lập tức
       setMessages((prevMessages) =>
         prevMessages.map((msg) =>
           msg._id === messageId
@@ -647,17 +654,26 @@ const GroupChatDetail = () => {
         )
       );
       
-      // Emit the revoke event to other users
-      if (socketRef.current) {
-        socketRef.current.emit("revokeMessage", { 
+      // Gọi API để thu hồi tin nhắn
+      const response = await revokeMessage(messageId);
+      console.log("Revoke message response:", response);
+      
+      // Đảm bảo socket đã được khởi tạo và đang kết nối
+      if (socketRef.current && socketRef.current.connected) {
+        const revokeData = { 
           messageId, 
           userId: user._id, 
           groupId,
           conversationId 
-        });
+        };
+        
+        console.log("Emitting revokeMessage event with data:", revokeData);
+        socketRef.current.emit("revokeMessage", revokeData);
+      } else {
+        console.warn("Socket not available or not connected for emitting revokeMessage event");
+        Alert.alert("Thông báo", "Tin nhắn đã được thu hồi trên thiết bị của bạn, nhưng có thể chưa được cập nhật cho người khác do kết nối không ổn định.");
       }
       
-      Alert.alert("Thành công", "Tin nhắn đã được thu hồi");
     } catch (error) {
       console.error("Error revoking message:", error);
       Alert.alert("Lỗi", `Không thể thu hồi tin nhắn: ${error.message || "Vui lòng thử lại"}`);
@@ -735,6 +751,14 @@ const GroupChatDetail = () => {
           <Bubble
             {...props}
             wrapperStyle={{ right: { backgroundColor: "#ccc" }, left: { backgroundColor: "#ccc" } }}
+            textStyle={{
+              right: {
+                color: "#fff",
+              },
+              left: {
+                color: "#000",
+              },
+            }}
           />
         );
       }

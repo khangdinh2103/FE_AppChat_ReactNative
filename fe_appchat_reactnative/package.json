@@ -39,7 +39,7 @@
     "react-native-file-viewer": "^2.1.5",
     "react-native-fs": "^2.20.0",
     "react-native-gesture-handler": "~2.24.0",
-    "react-native-gifted-chat": "^1.1.1",
+    "react-native-gifted-chat": "^2.6.3",
     "react-native-image-picker": "^8.2.0",
     "react-native-modal-datetime-picker": "^18.0.0",
     "react-native-paper": "4.9.2",
@@ -58,13 +58,13 @@
   "devDependencies": {
     "@babel/core": "^7.26.0",
     "@react-native-community/cli": "^18.0.0",
-    "babel-plugin-transform-inline-environment-variables": "^0.4.4",
-    "npm-force-resolutions": "^0.0.10"
+    "babel-plugin-transform-inline-environment-variables": "^0.4.4"
+  },
+  "overrides": {
+    "react-native-safe-area-context": "5.4.0"
   },
   "resolutions": {
-    "react-native-safe-area-context": "5.4.0",
-    "**/react-native-safe-area-context": "5.4.0",
-    "react-native-gifted-chat/react-native-safe-area-context": "5.4.0"
+    "react-native-safe-area-context": "5.4.0"
   },
   "private": true
 }

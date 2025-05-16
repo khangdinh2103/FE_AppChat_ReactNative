@@ -117,7 +117,12 @@ const ChatDetail = () => {
         const filteredMessages = formattedMessages.filter(
           msg => !deletedMessageIds.includes(msg._id)
         );
-        setMessages(filteredMessages);
+
+        // Process messages to group consecutive images
+        const processedMessages = processMessagesForImageGrid(filteredMessages);
+        
+        setMessages(processedMessages);
+        // setMessages(filteredMessages);
       }
     } catch (error) {
       console.error('Error details:', error.response?.data || error.message);
@@ -126,6 +131,61 @@ const ChatDetail = () => {
     }
   };
 
+  const renderMessageImageGrid = (props) => {
+    const { currentMessage } = props;
+    
+    if (!currentMessage.imageGrid || !Array.isArray(currentMessage.imageGrid)) {
+      return null;
+    }
+    
+    const images = currentMessage.imageGrid;
+    const imageCount = images.length;
+    
+    // Determine grid layout based on number of images
+    let numColumns = 2; // Default to 2 columns
+    if (imageCount === 1) numColumns = 1;
+    else if (imageCount === 4) numColumns = 2;
+    else if (imageCount > 4) numColumns = 3;
+    
+    // Calculate image size based on number of columns
+    const containerWidth = 240;
+    const imageSize = Math.floor(containerWidth / numColumns) - 4;
+    
+    return (
+      <View
+        style={[
+          styles.mediaBubble,
+          currentMessage.user._id === user._id ? styles.mediaBubbleRight : styles.mediaBubbleLeft,
+          { maxWidth: containerWidth + 10 }
+        ]}
+      >
+        <View style={styles.imageGridContainer}>
+          {images.map((imageUrl, index) => (
+            <TouchableOpacity 
+              key={`grid-image-${index}-${currentMessage._id}`}
+              onPress={() => handleFileOpen(imageUrl)}
+              style={{
+                width: imageSize,
+                height: imageSize,
+                margin: 2,
+                borderRadius: 4,
+                overflow: 'hidden'
+              }}
+            >
+              <Image
+                source={{ uri: imageUrl }}
+                style={{ 
+                  width: '100%', 
+                  height: '100%'
+                }}
+                resizeMode="cover"
+              />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    );
+  };
   useEffect(() => {
     if (conversationId) {
       loadDeletedMessageIds();
@@ -447,23 +507,112 @@ const ChatDetail = () => {
   
 
   // Add these functions before the return statement, after onSend
-  const handleImagePick = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
-        quality: 1,
-      });
-  
-      if (!result.canceled) {
-        setIsShowOptions(false);
-        await handleFileUpload(result.assets[0].uri, 'image');
+    // Update image picker to allow multiple selection
+    const handleImagePick = async () => {
+      try {
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          quality: 1,
+          allowsMultipleSelection: true, // Allow multiple image selection
+        });
+    
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+          setIsShowOptions(false);
+          
+          // If multiple images selected, upload them one by one
+          if (result.assets.length > 1) {
+            // Show loading indicator
+            Alert.alert('Đang tải', `Đang tải ${result.assets.length} ảnh lên...`);
+            
+            // Upload each image individually
+            for (const asset of result.assets) {
+              await handleFileUpload(asset.uri, 'image');
+            }
+          } else {
+            // Single image, handle normally
+            await handleFileUpload(result.assets[0].uri, 'image');
+          }
+        }
+      } catch (error) {
+        console.error('Error picking image:', error);
+        Alert.alert('Lỗi', 'Không thể chọn ảnh: ' + error.message);
       }
-    } catch (error) {
-      console.error('Error picking image:', error);
-    }
-  };
+    };
   
 
+      // Add this function to process messages and group consecutive images
+  const processMessagesForImageGrid = (messageList) => {
+    if (!messageList || messageList.length === 0) return [];
+    
+    const processedMessages = [];
+    let currentImageGroup = [];
+    let currentSenderId = null;
+    
+    // Process messages in reverse order (newest to oldest)
+    for (let i = 0; i < messageList.length; i++) {
+      const msg = messageList[i];
+      
+      // Check if this is an image message from the same sender as the current group
+      if (msg.image && 
+          (!currentSenderId || msg.user._id === currentSenderId) && 
+          currentImageGroup.length < 6) { // Limit to 6 images per grid
+        
+        // Add to current group
+        currentSenderId = msg.user._id;
+        currentImageGroup.push(msg);
+        
+        // If this is the last message or next message breaks the sequence
+        if (i === messageList.length - 1 || 
+            !messageList[i + 1].image || 
+            messageList[i + 1].user._id !== currentSenderId) {
+          
+          // If we have multiple images, create a grid
+          if (currentImageGroup.length > 1) {
+            const gridMessage = {
+              _id: `grid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              createdAt: currentImageGroup[0].createdAt,
+              user: currentImageGroup[0].user,
+              imageGrid: currentImageGroup.map(imgMsg => imgMsg.image),
+              originalMessages: currentImageGroup.map(imgMsg => imgMsg._id)
+            };
+            
+            processedMessages.push(gridMessage);
+            currentImageGroup = [];
+            currentSenderId = null;
+          } else {
+            // Single image, add as is
+            processedMessages.push(currentImageGroup[0]);
+            currentImageGroup = [];
+            currentSenderId = null;
+          }
+        }
+      } else {
+        // If we have pending images in the group, add them as a grid first
+        if (currentImageGroup.length > 1) {
+          const gridMessage = {
+            _id: `grid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            createdAt: currentImageGroup[0].createdAt,
+            user: currentImageGroup[0].user,
+            imageGrid: currentImageGroup.map(imgMsg => imgMsg.image),
+            originalMessages: currentImageGroup.map(imgMsg => imgMsg._id)
+          };
+          
+          processedMessages.push(gridMessage);
+          currentImageGroup = [];
+          currentSenderId = null;
+        } else if (currentImageGroup.length === 1) {
+          processedMessages.push(currentImageGroup[0]);
+          currentImageGroup = [];
+          currentSenderId = null;
+        }
+        
+        // Add the current non-image message
+        processedMessages.push(msg);
+      }
+    }
+    
+    return processedMessages;
+  };
   
   // Add this state for tracking long-pressed message
   const [selectedMessage, setSelectedMessage] = useState(null);
@@ -610,24 +759,28 @@ const ChatDetail = () => {
     }
   
     // Nếu là hình ảnh
-  if (currentMessage.image) {
-    return (
-      <View
-        style={[
-          styles.mediaBubble,
-          currentMessage.user._id === user._id ? styles.mediaBubbleRight : styles.mediaBubbleLeft,
-        ]}
-      >
-        <TouchableOpacity onPress={() => handleFileOpen(currentMessage.image)}>
-          <Image
-            source={{ uri: currentMessage.image }}
-            style={styles.media}
-            // resizeMode="cover"
-          />
-        </TouchableOpacity>
-      </View>
-    );
-  }
+    if (currentMessage.imageGrid && Array.isArray(currentMessage.imageGrid) && currentMessage.imageGrid.length > 0) {
+      return renderMessageImageGrid(props);
+    }
+  
+    // Nếu là hình ảnh đơn
+    if (currentMessage.image) {
+      return (
+        <View
+          style={[
+            styles.mediaBubble,
+            currentMessage.user._id === user._id ? styles.mediaBubbleRight : styles.mediaBubbleLeft,
+          ]}
+        >
+          <TouchableOpacity onPress={() => handleFileOpen(currentMessage.image)}>
+            <Image
+              source={{ uri: currentMessage.image }}
+              style={styles.media}
+            />
+          </TouchableOpacity>
+        </View>
+      );
+    }
 
   // Nếu là video
   if (currentMessage.video) {
@@ -891,6 +1044,13 @@ const styles = StyleSheet.create({
   headerName: {
     fontWeight: '600',
     fontSize: 16,
+  },
+  imageGridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    width: 250,
   },
   headerStatus: {
     color: '#8E8E93',
