@@ -715,28 +715,85 @@ const ChatDetail = () => {
     try {
       const response = await revokeMessage(messageId);
       
-      if (response.data.status === 'success') {
-        // Update local message state
-        setMessages(prevMessages => 
-          prevMessages.map(msg => 
-            msg._id === messageId 
-              ? { ...msg, text: "Tin nhắn đã được thu hồi", revoked: true } 
-              : msg
-          )
-        );
+      const messageToRevoke = messages.find(msg => msg._id === messageId);
+      if (!messageToRevoke) {
+        throw new Error("Tin nhắn không tồn tại");
+      }
+      
+      if (messageToRevoke.user._id !== user._id) {
+        throw new Error("Bạn không thể thu hồi tin nhắn của người khác");
+      }
+      
+      // Update UI immediately for better user experience
+      setMessages(prevMessages => 
+        prevMessages.map(msg => {
+          if (msg._id === messageId) {
+            // Create a revoked message that removes all media content
+            return { 
+              ...msg, 
+              text: "Tin nhắn đã được thu hồi", 
+              revoked: true,
+              image: null,
+              video: null,
+              file: null,
+              imageGrid: null
+            };
+          }
+          return msg;
+        })
+      );
+      
+      // For image grids, we need special handling
+      if (messageToRevoke.imageGrid && messageToRevoke.originalMessages) {
+        // If this is an image grid, we need to revoke all original messages
+        for (const originalMsgId of messageToRevoke.originalMessages) {
+          try {
+            await revokeMessage(originalMsgId);
+            
+            // Emit socket event for each original message
+            if (socketRef.current) {
+              socketRef.current.emit('revokeMessage', { 
+                messageId: originalMsgId, 
+                userId: user._id,
+                conversationId
+              });
+            }
+          } catch (err) {
+            console.log(`Error revoking original message ${originalMsgId}:`, err);
+            // Continue with other messages even if one fails
+          }
+        }
+      } else {
+        // Regular message revocation
+        const response = await revokeMessage(messageId);
+        console.log("Revoke message response:", response.data);
         
         // Emit socket event for real-time update
         if (socketRef.current) {
           socketRef.current.emit('revokeMessage', { 
             messageId, 
             userId: user._id,
-            conversationId
+            conversationId,
+            receiverId // Add receiverId for direct messages
           });
         }
       }
     } catch (error) {
       console.error('Error revoking message:', error);
-      Alert.alert('Error', 'Failed to revoke message');
+      
+      // Show more detailed error message
+      let errorMessage = "Không thể thu hồi tin nhắn";
+      if (error.response) {
+        console.log("Server error details:", error.response.data);
+        errorMessage += `: ${error.response.data.message || error.response.status}`;
+      } else if (error.message) {
+        errorMessage += `: ${error.message}`;
+      }
+      
+      Alert.alert('Lỗi', errorMessage);
+      
+      // Revert UI changes if the server request failed
+      fetchMessages();
     }
   };
 
