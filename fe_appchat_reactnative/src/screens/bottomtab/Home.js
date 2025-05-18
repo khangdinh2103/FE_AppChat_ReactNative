@@ -85,8 +85,20 @@ const Home = () => {
   }, [navigation, user]);
 
   // Fetch conversations from API
+  // Add this state for tracking last refresh time
+  const [lastRefreshTime, setLastRefreshTime] = useState(0);
+  
+  // Modify fetchConversations to include refresh time tracking
   const fetchConversations = useCallback(async () => {
     try {
+      // Check if we've refreshed too recently (within 2 seconds)
+      const now = Date.now();
+      if (now - lastRefreshTime < 2000) {
+        console.log("Skipping refresh - too soon since last refresh");
+        return;
+      }
+      
+      setLastRefreshTime(now);
       setLoading(true);
       const response = await getConversations();
       console.log("Fetched conversations:", response);
@@ -117,7 +129,7 @@ const Home = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [lastRefreshTime]);
 
   // Mark a conversation as read
   const markConversationAsRead = async (conversationId, messageId) => {
@@ -167,9 +179,21 @@ const Home = () => {
       socketRef.current = socketInstance;
 
       if (socketInstance) {
-        // Subscribe to messages
+        // Subscribe to individual messages
         const unsubscribeMessages = subscribeToMessages((data) => {
-          console.log("New message received in Home screen:", data);
+          console.log("New individual message received in Home screen:", data);
+          fetchConversations();
+        });
+
+        // Subscribe to group messages
+        socketInstance.on("receiveGroupMessage", (data) => {
+          console.log("New group message received in Home screen:", data);
+          fetchConversations();
+        });
+
+        // Subscribe to message revocation events
+        socketInstance.on("messageRevoked", (data) => {
+          console.log("Message revoked event received in Home screen:", data);
           fetchConversations();
         });
 
@@ -197,6 +221,8 @@ const Home = () => {
           console.log("Cleaning up socket connection in Home screen");
           if (unsubscribeMessages) unsubscribeMessages();
           if (unsubscribeGroupEvents) unsubscribeGroupEvents();
+          socketInstance.off("receiveGroupMessage");
+          socketInstance.off("messageRevoked");
         };
       }
     };
@@ -206,6 +232,8 @@ const Home = () => {
     return () => {
       if (socketRef.current) {
         socketRef.current.off("receiveMessage");
+        socketRef.current.off("receiveGroupMessage");
+        socketRef.current.off("messageRevoked");
         console.log("Cleaning up socket connection in Home screen");
       }
     };
@@ -457,6 +485,7 @@ const Home = () => {
           )}
           refreshing={loading}
           onRefresh={fetchConversations}
+          extraData={conversations} // Add this to ensure re-render when conversations change
         />
       </View>
     </MainLayout>
