@@ -24,7 +24,7 @@ import NetInfo from "@react-native-community/netinfo";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Define API_URL constant
-const API_URL = "http://192.168.1.9:5000";
+const API_URL = "http://192.168.1.132:5000";
 
 const ListHeaderComponent = ({ navigation, friendRequestCount, sentRequestCount }) => (
   <>

@@ -8,7 +8,7 @@ import {
 } from './socketService';
 import axios from 'axios';
 
-const API_URL = "http://192.168.1.9:5000";
+const API_URL = "http://192.168.1.132:5000";
 
 // Get all friend requests (keep API for initial fetch)
 export const getFriendRequests = async () => {
