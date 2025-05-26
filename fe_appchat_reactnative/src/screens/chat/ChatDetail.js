@@ -13,6 +13,7 @@ import { uploadFileToS3 } from '../../services/s3Service';
 import { Video } from 'expo-av';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { emitCallRequest } from "../../services/socketService";
+import ForwardMessageModal from '../../components/ForwardMessageModal';
 const ChatDetail = () => {
   const route = useRoute();
   const navigation = useNavigation();
@@ -25,6 +26,9 @@ const ChatDetail = () => {
   const { user } = useContext(AuthContext);
   const [messages, setMessages] = useState(initialMessages || []); // Initialize with initialMessages
   // In useEffect for socket setup
+
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [messageToForward, setMessageToForward] = useState(null);
   useEffect(() => {
     const setupSocket = async () => {
       const socketInstance = await initializeSocket();
@@ -665,49 +669,26 @@ const ChatDetail = () => {
   
   // Update onLongPress to handle both your messages and other person's messages
   const onLongPress = (context, message) => {
-    // Only allow revocation for user's own messages
-    if (message.user._id === user._id) {
-      setSelectedMessage(message);
-      Alert.alert(
-        "Tùy chọn tin nhắn",
-        "Chọn chức năng",
-        [
-          {
-            text: "Thu hồi tin nhắn",
-            onPress: () => handleRevokeMessage(message._id),
-          },
-          {
-            text: "Xóa tin nhắn",
-            onPress: () => handleDeleteLocalMessage(message._id),
-            style: "destructive"
-          },
-          {
-            text: "Hủy",
-            style: "cancel",
-          },
-        ],
-        { cancelable: true }
-      );
-    } else {
-      // Other person's message
-      setSelectedMessage(message);
-      Alert.alert(
-        "Tùy chọn tin nhắn",
-        "Chọn chức năng",
-        [
-          {
-            text: "Xóa tin nhắn",
-            onPress: () => handleDeleteLocalMessage(message._id),
-            style: "destructive"
-          },
-          {
-            text: "Hủy",
-            style: "cancel",
-          },
-        ],
-        { cancelable: true }
-      );
-    }
+    const options = message.user._id === user._id
+      ? [
+          { text: "Thu hồi tin nhắn", onPress: () => handleRevokeMessage(message._id) },
+          { text: "Chuyển tiếp tin nhắn", onPress: () => handleForwardMessage(message) },
+          { text: "Xóa tin nhắn", onPress: () => handleDeleteLocalMessage(message._id), style: "destructive" },
+          { text: "Hủy", style: "cancel" },
+        ]
+      : [
+          { text: "Chuyển tiếp tin nhắn", onPress: () => handleForwardMessage(message) },
+          { text: "Xóa tin nhắn", onPress: () => handleDeleteLocalMessage(message._id), style: "destructive" },
+          { text: "Hủy", style: "cancel" },
+        ];
+
+    Alert.alert("Tùy chọn tin nhắn", "Chọn chức năng", options, { cancelable: true });
+  };
+
+  // Add this function to handle message forwarding
+  const handleForwardMessage = (message) => {
+    setMessageToForward(message);
+    setShowForwardModal(true);
   };
   
   // Add function to handle message revocation
@@ -1078,6 +1059,11 @@ const ChatDetail = () => {
           </TouchableOpacity>
         </View>
       )}
+      <ForwardMessageModal
+        visible={showForwardModal}
+        onClose={() => setShowForwardModal(false)}
+        message={messageToForward}
+      />
     </View>
   );
 };

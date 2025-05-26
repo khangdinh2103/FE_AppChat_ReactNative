@@ -212,6 +212,73 @@ export const revokeMessage = async (messageId) => {
   }
 };
 
+// Forward a message
+// Update the forwardMessage function to match backend requirements
+// Forward a message
+// Forward a message
+export const forwardMessage = async (messageId, conversationIds) => {
+  try {
+    const token = await AsyncStorage.getItem("accessToken");
+    if (!token) {
+      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
+    }
+
+    // Gửi từng yêu cầu chuyển tiếp cho mỗi conversationId
+    const responses = [];
+    for (const conversationId of conversationIds) {
+      // Lấy thông tin cuộc trò chuyện để xác định isGroup
+      const conversationResponse = await axios.get(
+        `${API_URL}/api/conversation/${conversationId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      const conversation = conversationResponse.data.data;
+      const isGroup = conversation.type === "group";
+
+      // Xác định receiverId
+      let receiverId;
+      if (isGroup) {
+        // Nếu là nhóm, dùng group_id làm receiverId
+        receiverId = conversation.group_id;
+      } else {
+        // Nếu là cá nhân, lấy user_id của người nhận (khác với sender)
+        const senderId = await AsyncStorage.getItem("userId"); // Giả sử lưu userId
+        receiverId = conversation.participants.find(
+          (p) => p.user_id !== senderId
+        )?.user_id;
+      }
+
+      if (!receiverId) {
+        console.error(`Không tìm thấy receiverId cho conversation ${conversationId}`);
+        continue;
+      }
+
+      const response = await axios.post(
+        `${API_URL}/api/message/forward`,
+        {
+          originalMessageId: messageId,
+          receiverId: receiverId,
+          isGroup: isGroup,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      responses.push(response);
+    }
+
+    return responses; // Trả về mảng các response
+  } catch (error) {
+    //console.error('Error forwarding message:', error.response?.data || error.message);
+    // throw error;
+  }
+};
+
 // Socket-related functions
 let socket = null;
 
@@ -305,7 +372,6 @@ export const subscribeToGroupUpdated = (callback) => {
   return () => {};
 };
 
-
 export const checkConversationWithFriend = async (friendId, userId) => {
   try {
     const token = await AsyncStorage.getItem("accessToken");
@@ -336,8 +402,7 @@ export const leaveGroup = async (groupId) => {
     if (!token) {
       throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
     }
-    // Remove duplicate /api/group
-    const response = await axios.delete(`${API_URL}/${groupId}/leave`, {
+    const response = await axios.delete(`${API_URL}/api/group/${groupId}/leave`, {
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
