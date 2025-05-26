@@ -21,10 +21,9 @@ import { AuthProvider } from "./src/contexts/AuthContext";
 import CreateGroup from "./src/screens/chat/CreateGroup";
 import GroupChatDetail from "./src/screens/chat/GroupChatDetail";
 import GroupInfo from "./src/screens/chat/GroupInfo";
+import EditGroup from "./src/screens/chat/EditGroup"; // Add this import
 import { useEffect, useRef } from "react";
 import CallWebView from "./src/screens/call/CallWebView";
-
-// Add this import at the top
 import { setupDeepLinking } from './src/services/linkingService';
 import GroupInviteScreen from './src/screens/chat/GroupInviteScreen';
 
@@ -34,11 +33,8 @@ export default function App() {
   const navigationRef = useRef();
   
   useEffect(() => {
-    // Set up deep linking
     if (navigationRef.current) {
       const cleanupDeepLinks = setupDeepLinking(navigationRef.current);
-      
-      // Clean up when component unmounts
       return () => {
         cleanupDeepLinks();
       };
@@ -94,7 +90,6 @@ export default function App() {
             component={ResetPassword}
             options={{ headerShown: false }}
           />
-          
           <Stack.Screen
             name="AddFriend"
             component={AddFriend}
@@ -105,36 +100,34 @@ export default function App() {
             component={AddFriendConfirmation}
             options={{ headerShown: false }}
           />
-          
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="EditProfile" component={EditProfile} />
           <Stack.Screen name="QRScanner" component={QRScanner} />
-          
-          {/* Thêm các màn hình liên quan đến nhóm */}
-          <Stack.Screen 
-            name="CreateGroup" 
-            component={CreateGroup} 
-            options={{ headerShown: false }} 
+          <Stack.Screen
+            name="CreateGroup"
+            component={CreateGroup}
+            options={{ headerShown: false }}
           />
-          <Stack.Screen 
-            name="GroupChatDetail" 
-            component={GroupChatDetail} 
-            options={{ headerShown: false }} 
+          <Stack.Screen
+            name="GroupChatDetail"
+            component={GroupChatDetail}
+            options={{ headerShown: false }}
           />
-          <Stack.Screen 
-            name="GroupInfo" 
-            component={GroupInfo} 
-            options={{ headerShown: false }} 
+          <Stack.Screen
+            name="GroupInfo"
+            component={GroupInfo}
+            options={{ headerShown: false }}
           />
-          <Stack.Screen 
-            name="GroupInvite" 
-            component={GroupInviteScreen} 
-            options={{ headerShown: false }} 
+          <Stack.Screen
+            name="EditGroup"
+            component={EditGroup}
+            options={{ headerShown: false }}
           />
-          
-          
-          
-          {/* Add the CallWebView screen */}
+          <Stack.Screen
+            name="GroupInvite"
+            component={GroupInviteScreen}
+            options={{ headerShown: false }}
+          />
           <Stack.Screen
             name="CallWebView"
             component={CallWebView}

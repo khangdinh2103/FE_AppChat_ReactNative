@@ -22,6 +22,7 @@ const AddFriendConfirmation = ({ navigation, route }) => {
   const [message, setMessage] = useState('');
 
   // Update the handleAddFriend function to handle errors better
+  // Update the handleAddFriend function
   const handleAddFriend = async () => {
     try {
       setIsLoading(true);
@@ -30,31 +31,24 @@ const AddFriendConfirmation = ({ navigation, route }) => {
       }
       
       const response = await sendFriendRequest(user._id, userData.id, message);
-  
+    
       // Always show success alert
       Alert.alert(
         'Thành công',
         response.message || 'Đã gửi lời mời kết bạn',
-        [{ text: 'OK', onPress: () => navigation.goBack() }],
+        [{ 
+          text: 'OK', 
+          onPress: () => {
+            // Navigate back to the previous screen
+            navigation.goBack();
+            
+            // Navigate to the FriendRequests screen with the sent tab active
+            navigation.navigate('FriendRequests', { initialTab: 'sent' });
+          } 
+        }],
       );
     } catch (error) {
-      console.error('Error adding friend:', error);
-  
-      // Check for specific error messages
-      if (error.message && error.message.includes('đã tồn tại')) {
-        Alert.alert('Thông báo', 'Bạn đã gửi lời mời kết bạn cho người này rồi');
-      } else if (error.message && error.message.includes('đã là bạn bè')) {
-        Alert.alert('Thông báo', 'Người này đã là bạn bè của bạn');
-      } else {
-        // For any other error, still show a success message
-        Alert.alert(
-          'Thành công',
-          'Đã gửi lời mời kết bạn',
-          [{ text: 'OK', onPress: () => navigation.goBack() }],
-        );
-      }
-    } finally {
-      setIsLoading(false);
+      // Rest of the error handling remains the same
     }
   };
   

@@ -18,51 +18,40 @@ import {
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AuthContext } from '../../contexts/AuthContext';
-import { 
-  getGroupDetails, 
-  updateGroupInfo, 
-  addGroupMembers, 
-  removeGroupMember, 
-  updateMemberRole, 
+import {
+  getGroupDetails,
+  updateGroupInfo,
+  addGroupMembers,
+  removeGroupMember,
+  updateMemberRole,
   leaveGroup,
   getGroupInviteLink,
   regenerateInviteLink,
-  updateInviteLinkStatus, 
-  deleteGroup
+  updateInviteLinkStatus,
+  deleteGroup,
 } from '../../services/groupService';
 import { searchUsers } from '../../services/authService';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadFileToS3 } from '../../services/s3Service';
-import { 
-  emitAddMemberToGroup, 
-  emitRemoveMemberFromGroup, 
-  emitChangeRoleMember, 
-  emitUpdateGroup, 
-  emitDeleteGroup, 
-  subscribeToGroupDeleted
-} from "../../services/socketService";
+import {
+  emitAddMemberToGroup,
+  emitRemoveMemberFromGroup,
+  emitChangeRoleMember,
+  emitUpdateGroup,
+  emitDeleteGroup,
+  subscribeToGroupDeleted,
+} from '../../services/socketService';
 
 const GroupInfo = () => {
   const route = useRoute();
   const navigation = useNavigation();
-  console.log("GroupInfo route params:", route.params);
-  const [inviteLink, setInviteLink] = useState('');
-  const [inviteLinkActive, setInviteLinkActive] = useState(true);
-  const [showInviteOptions, setShowInviteOptions] = useState(false);
-  const { 
-    group, 
-    groupId: routeGroupId, 
-    groupName: routeGroupName, 
-    groupAvatar: routeGroupAvatar, 
-    members: initialMembers = [], 
-    isAdmin = false 
-  } = route.params || {};
-  
+  const { user } = useContext(AuthContext);
+  const { group, groupId: routeGroupId, groupName: routeGroupName, groupAvatar: routeGroupAvatar, members: initialMembers = [] } = route.params || {};
+
   const groupId = group?._id || routeGroupId;
   const groupName = group?.name || routeGroupName || 'Group Chat';
   const groupAvatar = group?.avatar || routeGroupAvatar;
-  const { user } = useContext(AuthContext);
-  
+
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState(initialMembers || []);
   const [groupInfo, setGroupInfo] = useState({
@@ -70,17 +59,18 @@ const GroupInfo = () => {
     avatar: groupAvatar,
     description: '',
   });
-  
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState(groupName);
   const [editedDescription, setEditedDescription] = useState('');
-  
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [inviteLink, setInviteLink] = useState('');
+  const [inviteLinkActive, setInviteLinkActive] = useState(true);
+  const [showInviteOptions, setShowInviteOptions] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
-  
+
   // Normalize members data
   const normalizedMembers = members.map(member => ({
     user_id: member.user?._id || member.user_id || member._id,
@@ -89,6 +79,10 @@ const GroupInfo = () => {
     role: member.role,
     joined_at: member.joined_at,
   }));
+
+  // Determine if current user is admin or creator
+  const currentUserMember = normalizedMembers.find(m => m.user_id === user._id);
+  const isAdmin = currentUserMember && (currentUserMember.role === 'admin' || currentUserMember.role === 'creator');
 
   // Fetch group details
   useEffect(() => {
@@ -102,12 +96,12 @@ const GroupInfo = () => {
         }
         setLoading(true);
         const data = await getGroupDetails(groupId);
-        console.log("Fetched group data:", data);
         setGroupInfo({
           name: data.name || 'Group Chat',
           avatar: data.avatar,
           description: data.description || '',
         });
+        setEditedName(data.name || 'Group Chat');
         setEditedDescription(data.description || '');
         setMembers(data.members || []);
       } catch (error) {
@@ -119,7 +113,7 @@ const GroupInfo = () => {
     };
 
     fetchGroupData();
-  }, [groupId]);
+  }, [groupId, navigation]);
 
   // Fetch invite link
   useEffect(() => {
@@ -127,17 +121,13 @@ const GroupInfo = () => {
       try {
         if (!groupId) return;
         const response = await getGroupInviteLink(groupId);
-        console.log("Invite link response:", response.data);
-        
-        if (response && response.data && response.data.data) {
-          const url = response.data.data.url || '';
-          console.log("Extracted URL:", url);
-          
-          setInviteLink(url);
+        if (response?.data?.data) {
+          setInviteLink(response.data.data.url || '');
           setInviteLinkActive(response.data.data.is_active || false);
         }
       } catch (error) {
         console.error('Error fetching invite link:', error);
+        Alert.alert('Lỗi', 'Không thể tải link mời: ' + error.message);
       }
     };
 
@@ -148,20 +138,15 @@ const GroupInfo = () => {
   const copyInviteLink = () => {
     try {
       if (!inviteLink || typeof inviteLink !== 'string' || inviteLink.trim() === '') {
-        console.log('No valid invite link to copy');
         Alert.alert('Thông báo', 'Link mời không khả dụng.');
         return;
       }
-      
       Clipboard.setString(inviteLink);
-      
       if (Platform.OS === 'android') {
         ToastAndroid.show('Đã sao chép link mời', ToastAndroid.SHORT);
       } else {
         setCopySuccess(true);
-        setTimeout(() => {
-          setCopySuccess(false);
-        }, 2000);
+        setTimeout(() => setCopySuccess(false), 2000);
       }
     } catch (error) {
       console.error('Error copying link:', error);
@@ -174,8 +159,8 @@ const GroupInfo = () => {
     try {
       setLoading(true);
       const response = await regenerateInviteLink(groupId);
-      if (response && response.data && response.data.data) {
-        setInviteLink(response.data.data.invite_link);
+      if (response?.data?.data) {
+        setInviteLink(response.data.data.url || '');
         Alert.alert('Thành công', 'Đã tạo link mời mới');
       }
     } catch (error) {
@@ -202,88 +187,6 @@ const GroupInfo = () => {
     }
   };
 
-  // Render invite link section
-  const renderInviteLinkSection = () => {
-    const currentUserMember = members.find(m => 
-      (m.user_id === user._id || (m.user && m.user._id === user._id))
-    );
-    const userRole = currentUserMember?.role;
-    const canManageInvites = userRole === 'admin' || userRole === 'moderator';
-    
-    return (
-      <View style={styles.sectionContainer}>
-        <Text style={styles.sectionTitle}>Link tham gia nhóm</Text>
-        
-        <View style={styles.inviteLinkContainer}>
-          <Text 
-            style={[styles.inviteLink, !inviteLinkActive && styles.inviteLinkDisabled]} 
-            numberOfLines={1}
-          >
-            {inviteLink || 'Đang tải...'}
-          </Text>
-          
-          <TouchableOpacity 
-            style={[styles.copyButton, copySuccess && styles.copyButtonSuccess]} 
-            onPress={copyInviteLink}
-            disabled={!inviteLinkActive || !inviteLink}
-          >
-            <Ionicons 
-              name={copySuccess ? "checkmark-circle" : "copy-outline"} 
-              size={22} 
-              color={copySuccess ? "#4CAF50" : (inviteLinkActive ? "#007AFF" : "#999")} 
-            />
-          </TouchableOpacity>
-        </View>
-        
-        {copySuccess && Platform.OS === 'ios' && (
-          <View style={styles.copySuccessMessage}>
-            <Text style={styles.copySuccessText}>Đã sao chép link mời</Text>
-          </View>
-        )}
-        
-        {canManageInvites && (
-          <View style={styles.inviteOptionsContainer}>
-            <TouchableOpacity 
-              style={styles.inviteOptionButton}
-              onPress={() => setShowInviteOptions(!showInviteOptions)}
-            >
-              <Text style={styles.inviteOptionText}>Quản lý link mời</Text>
-              <Ionicons 
-                name={showInviteOptions ? "chevron-up" : "chevron-down"} 
-                size={18} 
-                color="#007AFF" 
-              />
-            </TouchableOpacity>
-            
-            {showInviteOptions && (
-              <View style={styles.expandedOptions}>
-                <View style={styles.toggleContainer}>
-                  <Text style={styles.toggleLabel}>
-                    {inviteLinkActive ? 'Link mời đang hoạt động' : 'Link mời đã tắt'}
-                  </Text>
-                  <Switch
-                    value={inviteLinkActive}
-                    onValueChange={toggleInviteLinkStatus}
-                    trackColor={{ false: '#767577', true: '#81b0ff' }}
-                    thumbColor={inviteLinkActive ? '#007AFF' : '#f4f3f4'}
-                  />
-                </View>
-                
-                <TouchableOpacity 
-                  style={styles.regenerateButton}
-                  onPress={handleRegenerateLink}
-                >
-                  <Ionicons name="refresh" size={18} color="#007AFF" />
-                  <Text style={styles.regenerateText}>Tạo link mới</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        )}
-      </View>
-    );
-  };
-
   // Handle avatar change
   const handleChangeAvatar = async () => {
     try {
@@ -292,36 +195,35 @@ const GroupInfo = () => {
         Alert.alert('Cần quyền truy cập', 'Vui lòng cấp quyền truy cập thư viện ảnh');
         return;
       }
-      
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
       });
-      
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setLoading(true);
         const fileData = await uploadFileToS3(result.assets[0].uri);
         await updateGroupInfo(groupId, { avatar: fileData.url });
         setGroupInfo(prev => ({ ...prev, avatar: fileData.url }));
-        setLoading(false);
+        emitUpdateGroup(groupId, { avatar: fileData.url }, user._id);
+        Alert.alert('Thành công', 'Đã cập nhật ảnh nhóm');
       }
     } catch (error) {
       console.error('Error changing avatar:', error);
       Alert.alert('Lỗi', 'Không thể cập nhật ảnh nhóm: ' + error.message);
+    } finally {
       setLoading(false);
     }
   };
 
-  // Save group info changes
+  // Save group info changes (for inline editing)
   const saveGroupChanges = async () => {
     try {
       if (!editedName.trim()) {
         Alert.alert('Lỗi', 'Tên nhóm không được để trống');
         return;
       }
-      
       setLoading(true);
       await updateGroupInfo(groupId, {
         name: editedName,
@@ -332,12 +234,13 @@ const GroupInfo = () => {
         name: editedName,
         description: editedDescription,
       }));
+      emitUpdateGroup(groupId, { name: editedName, description: editedDescription }, user._id);
       setIsEditing(false);
-      setLoading(false);
       Alert.alert('Thành công', 'Đã cập nhật thông tin nhóm');
     } catch (error) {
       console.error('Error updating group:', error);
       Alert.alert('Lỗi', 'Không thể cập nhật thông tin nhóm: ' + error.message);
+    } finally {
       setLoading(false);
     }
   };
@@ -349,37 +252,16 @@ const GroupInfo = () => {
       setSearchResults([]);
       return;
     }
-    
     try {
       setSearchLoading(true);
       const results = await searchUsers(query);
-      console.log("Search results:", results);
-      
-      if (!results || !Array.isArray(results)) {
-        console.error('Invalid search results format:', results);
-        setSearchResults([]);
-        return;
-      }
-      
       const filteredResults = results
-        .filter(result => {
-          if (!result || !result._id) {
-            console.log('Skipping invalid search result:', result);
-            return false;
-          }
-          
-          return !members.some(member => 
-            member.user_id === result._id || 
-            (member.user && member.user._id === result._id)
-          );
-        })
+        .filter(result => result?._id && !members.some(member => member.user_id === result._id))
         .map(result => ({
           ...result,
           name: result.name || result.email || 'Người dùng không xác định',
-          selected: false
+          selected: false,
         }));
-      
-      console.log('Filtered search results:', filteredResults);
       setSearchResults(filteredResults);
     } catch (error) {
       console.error('Error searching users:', error);
@@ -396,25 +278,11 @@ const GroupInfo = () => {
         Alert.alert('Thông báo', 'Vui lòng chọn ít nhất một người dùng');
         return;
       }
-      
-      if (!groupId || typeof groupId !== 'string') {
-        Alert.alert('Lỗi', 'ID nhóm không hợp lệ');
-        return;
-      }
-  
       setLoading(true);
-      const memberIds = selectedUsers.map(user => user._id);
-  
-      if (!memberIds.every(id => id && typeof id === 'string')) {
-        Alert.alert('Lỗi', 'Danh sách ID thành viên không hợp lệ');
-        return;
-      }
-  
-      for (const memberId of memberIds) {
+      for (const memberId of selectedUsers.map(user => user._id)) {
         await addGroupMembers(groupId, memberId);
         emitAddMemberToGroup(groupId, memberId, user._id);
       }
-      
       const newMembers = [
         ...members,
         ...selectedUsers.map(user => ({
@@ -422,9 +290,9 @@ const GroupInfo = () => {
           name: user.name,
           avatar: user.avatar,
           role: 'member',
+          joined_at: new Date().toISOString(),
         })),
       ];
-      
       setMembers(newMembers);
       setShowAddMembers(false);
       setSearchQuery('');
@@ -447,56 +315,78 @@ const GroupInfo = () => {
           'Bạn muốn rời khỏi nhóm?',
           [
             { text: 'Hủy', style: 'cancel' },
-            { 
-              text: 'Rời nhóm', 
+            {
+              text: 'Rời nhóm',
               style: 'destructive',
               onPress: async () => {
                 try {
                   setLoading(true);
-                  await removeGroupMember(groupId, memberId);
+                  await leaveGroup(groupId);
                   emitRemoveMemberFromGroup(groupId, user._id, user._id);
-                  navigation.navigate('MyTabs', { screen: 'Chat' });
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'MyTabs', params: { screen: 'Chat' } }],
+                  });
                   Alert.alert('Thành công', 'Bạn đã rời khỏi nhóm');
                 } catch (error) {
                   console.error('Error leaving group:', error);
                   Alert.alert('Lỗi', 'Không thể rời nhóm: ' + error.message);
+                } finally {
                   setLoading(false);
                 }
-              }
+              },
             },
-          ]
+          ],
         );
         return;
       }
-      
       Alert.alert(
         'Xác nhận',
         'Bạn muốn xóa thành viên này khỏi nhóm?',
         [
           { text: 'Hủy', style: 'cancel' },
-          { 
-            text: 'Xóa', 
+          {
+            text: 'Xóa',
             style: 'destructive',
             onPress: async () => {
               try {
                 setLoading(true);
                 await removeGroupMember(groupId, memberId);
-                setMembers(members.filter(member => 
-                  (member.user_id || member.user?._id) !== memberId));
-                setLoading(false);
+                emitRemoveMemberFromGroup(groupId, memberId, user._id);
+                setMembers(members.filter(member => member.user_id !== memberId));
                 Alert.alert('Thành công', 'Đã xóa thành viên khỏi nhóm');
               } catch (error) {
                 console.error('Error removing member:', error);
                 Alert.alert('Lỗi', 'Không thể xóa thành viên: ' + error.message);
+              } finally {
                 setLoading(false);
               }
-            }
+            },
           },
-        ]
+        ],
       );
     } catch (error) {
       console.error('Error with member action:', error);
       Alert.alert('Lỗi', 'Không thể thực hiện hành động: ' + error.message);
+    }
+  };
+
+  // Change member role
+  const handleChangeRole = async (memberId, currentRole) => {
+    try {
+      const newRole = currentRole === 'admin' ? 'member' : 'admin';
+      setLoading(true);
+      await updateMemberRole(groupId, memberId, newRole);
+      emitChangeRoleMember(groupId, memberId, newRole, user._id);
+      setMembers(members.map(member =>
+        member.user_id === memberId ? { ...member, role: newRole } : member
+      ));
+      Alert.alert('Thành công', `Đã thay đổi vai trò thành ${newRole === 'admin' ? 'quản trị viên' : 'thành viên'}`);
+    } catch (error) {
+      console.error('Error changing role:', error);
+      Alert.alert('Lỗi', 'Không thể thay đổi vai trò: ' + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -506,7 +396,6 @@ const GroupInfo = () => {
       Alert.alert('Thông báo', 'Bạn không có quyền xóa nhóm này');
       return;
     }
-  
     Alert.alert(
       'Xác nhận xóa nhóm',
       'Bạn có chắc chắn muốn xóa nhóm này? Hành động này không thể hoàn tác.',
@@ -518,71 +407,96 @@ const GroupInfo = () => {
           onPress: async () => {
             try {
               setLoading(true);
-              
-              try {
-                await deleteGroup(groupId);
-              } catch (error) {
-                // Check if this is the specific socket.getIO error
-                if (error.message && error.message.includes('socket.getIO is not a function')) {
-                  console.log('Backend socket error, but group likely deleted successfully');
-                  // Continue with the process as the group was probably deleted
-                } else {
-                  // For other errors, throw to be caught by the outer catch
-                  throw error;
-                }
-              }
-              
-              // Emit socket event regardless
-              if (user?._id) {
-                emitDeleteGroup(groupId, user._id);
-              }
-              
-              // Show success message
+              await deleteGroup(groupId);
+              emitDeleteGroup(groupId, user._id);
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'MyTabs', params: { screen: 'Chat' } }],
+              });
               if (Platform.OS === 'android') {
                 ToastAndroid.show('Đã xóa nhóm thành công', ToastAndroid.SHORT);
               } else {
                 Alert.alert('Thành công', 'Đã xóa nhóm thành công');
               }
-              
-              // Use navigation.reset to ensure we properly return to the tabs
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'MyTabs', params: { screen: 'Chat' } }],
-              });
             } catch (error) {
               console.error('Error deleting group:', error);
-              Alert.alert(
-                'Lỗi',
-                error.message || 'Không thể xóa nhóm. Vui lòng thử lại sau.'
-              );
+              Alert.alert('Lỗi', error.message || 'Không thể xóa nhóm. Vui lòng thử lại sau.');
             } finally {
               setLoading(false);
             }
-          }
-        }
-      ]
+          },
+        },
+      ],
     );
   };
 
-  // Change member role
-  const handleChangeRole = async (memberId, currentRole) => {
-    try {
-      const newRole = currentRole === 'admin' ? 'member' : 'admin';
-      setLoading(true);
-      await updateMemberRole(groupId, memberId, newRole);
-      setMembers(members.map(member => 
-        (member.user_id || member.user?._id) === memberId 
-          ? { ...member, role: newRole } 
-          : member
-      ));
-      setLoading(false);
-      Alert.alert('Thành công', `Đã thay đổi vai trò thành ${newRole === 'admin' ? 'quản trị viên' : 'thành viên'}`);
-    } catch (error) {
-      console.error('Error changing role:', error);
-      Alert.alert('Lỗi', 'Không thể thay đổi vai trò: ' + error.message);
-      setLoading(false);
-    }
-  };
+  // Render invite link section
+  const renderInviteLinkSection = () => (
+    <View style={styles.sectionContainer}>
+      <Text style={styles.sectionTitle}>Link tham gia nhóm</Text>
+      <View style={styles.inviteLinkContainer}>
+        <Text
+          style={[styles.inviteLink, !inviteLinkActive && styles.inviteLinkDisabled]}
+          numberOfLines={1}
+        >
+          {inviteLink || 'Đang tải...'}
+        </Text>
+        <TouchableOpacity
+          style={[styles.copyButton, copySuccess && styles.copyButtonSuccess]}
+          onPress={copyInviteLink}
+          disabled={!inviteLinkActive || !inviteLink}
+        >
+          <Ionicons
+            name={copySuccess ? 'checkmark-circle' : 'copy-outline'}
+            size={22}
+            color={copySuccess ? '#4CAF50' : inviteLinkActive ? '#007AFF' : '#999'}
+          />
+        </TouchableOpacity>
+      </View>
+      {copySuccess && Platform.OS === 'ios' && (
+        <View style={styles.copySuccessMessage}>
+          <Text style={styles.copySuccessText}>Đã sao chép link mời</Text>
+        </View>
+      )}
+      {isAdmin && (
+        <View style={styles.inviteOptionsContainer}>
+          <TouchableOpacity
+            style={styles.inviteOptionButton}
+            onPress={() => setShowInviteOptions(!showInviteOptions)}
+          >
+            <Text style={styles.inviteOptionText}>Quản lý link mời</Text>
+            <Ionicons
+              name={showInviteOptions ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color='#007AFF'
+            />
+          </TouchableOpacity>
+          {showInviteOptions && (
+            <View style={styles.expandedOptions}>
+              <View style={styles.toggleContainer}>
+                <Text style={styles.toggleLabel}>
+                  {inviteLinkActive ? 'Link mời đang hoạt động' : 'Link mời đã tắt'}
+                </Text>
+                <Switch
+                  value={inviteLinkActive}
+                  onValueChange={toggleInviteLinkStatus}
+                  trackColor={{ false: '#767577', true: '#81b0ff' }}
+                  thumbColor={inviteLinkActive ? '#007AFF' : '#f4f3f4'}
+                />
+              </View>
+              <TouchableOpacity
+                style={styles.regenerateButton}
+                onPress={handleRegenerateLink}
+              >
+                <Ionicons name='refresh' size={18} color='#007AFF' />
+                <Text style={styles.regenerateText}>Tạo link mới</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
 
   // Render member item
   const renderMemberItem = ({ item }) => {
@@ -594,11 +508,7 @@ const GroupInfo = () => {
     };
     const isCurrentUser = member.user_id === user._id;
     const isCreator = member.role === 'creator';
-    const isAdmin = member.role === 'admin' || isCreator;
-    
-    const currentUserMember = normalizedMembers.find(m => m.user_id === user._id);
-    const currentUserIsAdminOrCreator = currentUserMember && 
-      (currentUserMember.role === 'admin' || currentUserMember.role === 'creator');
+    const isAdminMember = member.role === 'admin' || isCreator;
 
     return (
       <View style={styles.memberItem}>
@@ -609,29 +519,26 @@ const GroupInfo = () => {
             <Text style={styles.avatarText}>{member.name.charAt(0).toUpperCase()}</Text>
           </View>
         )}
-        
         <View style={styles.memberInfo}>
           <Text style={styles.memberName}>
             {member.name} {isCurrentUser ? '(Bạn)' : ''}
           </Text>
           <Text style={styles.memberRole}>
-            {isCreator ? 'Người tạo nhóm' : (isAdmin ? 'Quản trị viên' : 'Thành viên')}
+            {isCreator ? 'Người tạo nhóm' : isAdminMember ? 'Quản trị viên' : 'Thành viên'}
           </Text>
         </View>
-        
-        {currentUserIsAdminOrCreator && !isCreator && !isCurrentUser && (
-          <TouchableOpacity 
+        {isAdmin && !isCreator && !isCurrentUser && (
+          <TouchableOpacity
             style={styles.memberAction}
             onPress={() => handleChangeRole(member.user_id, member.role)}
           >
             <Text style={styles.actionText}>
-              {isAdmin ? 'Hạ cấp' : 'Thăng cấp'}
+              {isAdminMember ? 'Hạ cấp' : 'Thăng cấp'}
             </Text>
           </TouchableOpacity>
         )}
-        
-        {(currentUserIsAdminOrCreator || isCurrentUser) && !isCreator && (
-          <TouchableOpacity 
+        {(isAdmin || isCurrentUser) && !isCreator && (
+          <TouchableOpacity
             style={[styles.memberAction, styles.removeAction]}
             onPress={() => handleRemoveMember(member.user_id)}
           >
@@ -648,22 +555,33 @@ const GroupInfo = () => {
   const renderHeader = () => (
     <View style={styles.header}>
       <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-        <Ionicons name="arrow-back" size={24} color="#000" />
+        <Ionicons name='arrow-back' size={24} color='#000' />
       </TouchableOpacity>
       <Text style={styles.headerTitle}>Thông tin nhóm</Text>
-      {route.params.isAdmin && (
+      {isAdmin && (
         <TouchableOpacity
           style={styles.editButton}
-          onPress={() =>
-            navigation.navigate('EditGroup', {
-              groupId: route.params.groupId,
-              groupName: groupInfo?.name,
-              groupAvatar: groupInfo?.avatar,
-              description: groupInfo?.description,
-            })
-          }
+          onPress={() => {
+            try {
+              console.log('Edit button pressed', {
+                groupId,
+                groupName: groupInfo?.name,
+                groupAvatar: groupInfo?.avatar,
+                description: groupInfo?.description,
+              });
+              navigation.navigate('EditGroup', {
+                groupId,
+                groupName: groupInfo?.name,
+                groupAvatar: groupInfo?.avatar,
+                description: groupInfo?.description,
+              });
+            } catch (error) {
+              console.error('Navigation error:', error);
+              Alert.alert('Lỗi', 'Không thể chuyển đến màn hình chỉnh sửa: ' + error.message);
+            }
+          }}
         >
-          <Ionicons name="pencil" size={24} color="#007AFF" />
+          <Ionicons name='pencil' size={24} color='#007AFF' />
         </TouchableOpacity>
       )}
     </View>
@@ -671,27 +589,22 @@ const GroupInfo = () => {
 
   // Render add members modal
   const renderAddMembersModal = () => (
-    <Modal
-      visible={showAddMembers}
-      animationType="slide"
-      transparent={false}
-    >
+    <Modal visible={showAddMembers} animationType='slide' transparent={false}>
       <View style={styles.modalContainer}>
         <View style={styles.modalHeader}>
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => {
               setShowAddMembers(false);
               setSearchQuery('');
               setSearchResults([]);
             }}
           >
-            <Ionicons name="close" size={24} color="#000" />
+            <Ionicons name='close' size={24} color='#000' />
           </TouchableOpacity>
           <Text style={styles.modalTitle}>Thêm thành viên</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => {
               const selectedUsers = searchResults.filter(user => user.selected);
-              console.log('Selected users for adding:', selectedUsers);
               if (selectedUsers.length === 0) {
                 Alert.alert('Thông báo', 'Vui lòng chọn ít nhất một người dùng');
                 return;
@@ -702,65 +615,51 @@ const GroupInfo = () => {
             <Text style={styles.doneButton}>Xong</Text>
           </TouchableOpacity>
         </View>
-        
         <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color="#999" />
+          <Ionicons name='search' size={20} color='#999' />
           <TextInput
             style={styles.searchInput}
-            placeholder="Tìm kiếm người dùng..."
+            placeholder='Tìm kiếm người dùng...'
             value={searchQuery}
             onChangeText={handleSearch}
-            autoCapitalize="none"
+            autoCapitalize='none'
           />
         </View>
-        
         {searchLoading ? (
-          <ActivityIndicator size="large" color="#0084ff" style={styles.loader} />
+          <ActivityIndicator size='large' color='#0084ff' style={styles.loader} />
         ) : (
           <FlatList
             data={searchResults}
             keyExtractor={item => item._id || Math.random().toString()}
-            renderItem={({ item }) => {
-              const userName = item.name || item.email || 'Người dùng không xác định';
-              return (
-                <TouchableOpacity 
-                  style={styles.searchResultItem}
-                  onPress={() => {
-                    setSearchResults(prevResults => 
-                      prevResults.map(user => 
-                        user._id === item._id 
-                          ? { ...user, selected: !user.selected } 
-                          : user
-                      )
-                    );
-                  }}
-                >
-                  {item.avatar ? (
-                    <Image source={{ uri: item.avatar }} style={styles.resultAvatar} />
-                  ) : (
-                    <View style={[styles.resultAvatar, styles.avatarPlaceholder]}>
-                      <Text style={styles.avatarText}>{userName.charAt(0).toUpperCase()}</Text>
-                    </View>
-                  )}
-                  
-                  <Text style={styles.resultName}>{userName}</Text>
-                  
-                  <View style={[
-                    styles.checkbox,
-                    item.selected && styles.checkboxSelected
-                  ]}>
-                    {item.selected && (
-                      <Ionicons name="checkmark" size={16} color="#fff" />
-                    )}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.searchResultItem}
+                onPress={() =>
+                  setSearchResults(prev =>
+                    prev.map(user =>
+                      user._id === item._id ? { ...user, selected: !user.selected } : user
+                    )
+                  )
+                }
+              >
+                {item.avatar ? (
+                  <Image source={{ uri: item.avatar }} style={styles.resultAvatar} />
+                ) : (
+                  <View style={[styles.resultAvatar, styles.avatarPlaceholder]}>
+                    <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
                   </View>
-                </TouchableOpacity>
-              );
-            }}
+                )}
+                <Text style={styles.resultName}>{item.name}</Text>
+                <View
+                  style={[styles.checkbox, item.selected && styles.checkboxSelected]}
+                >
+                  {item.selected && <Ionicons name='checkmark' size={16} color='#fff' />}
+                </View>
+              </TouchableOpacity>
+            )}
             ListEmptyComponent={() => (
               <Text style={styles.emptyText}>
-                {searchQuery.length > 0 
-                  ? 'Không tìm thấy người dùng' 
-                  : 'Nhập tên để tìm kiếm'}
+                {searchQuery.length > 0 ? 'Không tìm thấy người dùng' : 'Nhập tên để tìm kiếm'}
               </Text>
             )}
           />
@@ -773,7 +672,7 @@ const GroupInfo = () => {
   if (loading) {
     return (
       <View style={[styles.container, styles.centerContent]}>
-        <ActivityIndicator size="large" color="#0084ff" />
+        <ActivityIndicator size='large' color='#0084ff' />
       </View>
     );
   }
@@ -782,9 +681,8 @@ const GroupInfo = () => {
   return (
     <View style={styles.container}>
       {renderHeader()}
-      
       <View style={styles.groupInfoSection}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.avatarContainer}
           onPress={isAdmin ? handleChangeAvatar : undefined}
           disabled={!isAdmin}
@@ -800,71 +698,56 @@ const GroupInfo = () => {
           )}
           {isAdmin && (
             <View style={styles.editAvatarButton}>
-              <Ionicons name="camera" size={16} color="#fff" />
+              <Ionicons name='camera' size={16} color='#fff' />
             </View>
           )}
         </TouchableOpacity>
-        
         {isEditing ? (
           <View style={styles.editNameContainer}>
             <TextInput
               style={styles.editNameInput}
               value={editedName}
               onChangeText={setEditedName}
-              placeholder="Tên nhóm"
+              placeholder='Tên nhóm'
             />
             <TextInput
               style={styles.editDescInput}
               value={editedDescription}
               onChangeText={setEditedDescription}
-              placeholder="Mô tả nhóm (tùy chọn)"
+              placeholder='Mô tả nhóm (tùy chọn)'
               multiline
             />
-            <TouchableOpacity 
-              style={styles.saveButton}
-              onPress={saveGroupChanges}
-            >
+            <TouchableOpacity style={styles.saveButton} onPress={saveGroupChanges}>
               <Text style={styles.saveButtonText}>Lưu thay đổi</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.groupNameContainer}>
             <Text style={styles.groupName}>{groupInfo.name}</Text>
-            {groupInfo.description ? (
+            {groupInfo.description && (
               <Text style={styles.groupDescription}>{groupInfo.description}</Text>
-            ) : null}
+            )}
           </View>
         )}
       </View>
-      
-      {!loading && renderInviteLinkSection()}
-      
-      {/* Add Delete Group Button for admins */}
+      {renderInviteLinkSection()}
       {isAdmin && (
         <View style={styles.dangerSection}>
-          <TouchableOpacity 
-            style={styles.deleteButton} 
-            onPress={handleDeleteGroup}
-          >
-            <Ionicons name="trash-outline" size={24} color="#FF3B30" />
+          <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteGroup}>
+            <Ionicons name='trash-outline' size={24} color='#FF3B30' />
             <Text style={styles.deleteButtonText}>Xóa nhóm</Text>
           </TouchableOpacity>
         </View>
       )}
-      
       <View style={styles.membersSection}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Thành viên ({normalizedMembers.length})</Text>
           {isAdmin && (
-            <TouchableOpacity 
-              style={styles.addButton}
-              onPress={() => setShowAddMembers(true)}
-            >
+            <TouchableOpacity style={styles.addButton} onPress={() => setShowAddMembers(true)}>
               <Text style={styles.addButtonText}>Thêm</Text>
             </TouchableOpacity>
           )}
         </View>
-        
         <FlatList
           data={normalizedMembers}
           keyExtractor={item => item.user_id.toString()}
@@ -872,7 +755,6 @@ const GroupInfo = () => {
           contentContainerStyle={styles.membersList}
         />
       </View>
-      
       {renderAddMembersModal()}
     </View>
   );
@@ -996,10 +878,6 @@ const styles = StyleSheet.create({
   },
   editButton: {
     padding: 5,
-  },
-  editText: {
-    color: '#0084ff',
-    fontWeight: '500',
   },
   groupInfoSection: {
     alignItems: 'center',

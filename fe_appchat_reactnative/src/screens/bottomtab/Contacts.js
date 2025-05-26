@@ -24,7 +24,7 @@ import NetInfo from "@react-native-community/netinfo";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Define API_URL constant
-const API_URL = "http://192.168.1.132:5000";
+const API_URL = "http://192.168.1.130:5000";
 
 const ListHeaderComponent = ({ navigation, friendRequestCount, sentRequestCount }) => (
   <>
@@ -756,56 +756,3 @@ const styles = StyleSheet.create({
 
 export default Contacts;
 
-// Update the handleCancelRequest function to handle platform differences
-const handleCancelRequest = async (requestId) => {
-  try {
-    setLoading(true);
-    
-    if (!user?._id) {
-      await refreshUser();
-    }
-    
-    const result = await cancelFriendRequest(requestId);
-    
-    // Show success message based on platform
-    if (Platform.OS === 'android') {
-      ToastAndroid.show(
-        result.message || 'Đã hủy lời mời kết bạn thành công',
-        ToastAndroid.SHORT
-      );
-    } else {
-      // Use Alert for iOS
-      Alert.alert(
-        'Thành công',
-        result.message || 'Đã hủy lời mời kết bạn thành công'
-      );
-    }
-    
-    // Update the UI by removing the request
-    setSentRequests(prevRequests => 
-      prevRequests.filter(request => request._id !== requestId)
-    );
-  } catch (error) {
-    console.error("Error cancelling friend request:", error);
-    // Still show success message even if there's an error
-    if (Platform.OS === 'android') {
-      ToastAndroid.show(
-        'Đã hủy lời mời kết bạn thành công',
-        ToastAndroid.SHORT
-      );
-    } else {
-      // Use Alert for iOS
-      Alert.alert(
-        'Thành công',
-        'Đã hủy lời mời kết bạn thành công'
-      );
-    }
-    
-    // Update UI by removing the request anyway
-    setSentRequests(prevRequests => 
-      prevRequests.filter(request => request._id !== requestId)
-    );
-  } finally {
-    setLoading(false);
-  }
-};
