@@ -59,7 +59,16 @@ const AddFriendConfirmation = ({ navigation, route }) => {
       Alert.alert(
         'Thành công',
         response.message || 'Đã gửi lời mời kết bạn',
-        [{ text: 'OK', onPress: () => navigation.goBack() }],
+        [{ 
+          text: 'OK', 
+          onPress: () => {
+            // Navigate back to the previous screen
+            navigation.goBack();
+            
+            // Navigate to the FriendRequests screen with the sent tab active
+            navigation.navigate('FriendRequests', { initialTab: 'sent' });
+          } 
+        }],
       );
     } catch (error) {
       console.error('Error adding friend:', error);

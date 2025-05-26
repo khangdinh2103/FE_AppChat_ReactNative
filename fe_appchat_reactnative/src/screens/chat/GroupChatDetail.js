@@ -37,6 +37,8 @@ import * as DocumentPicker from "expo-document-picker";
 import { Video } from "expo-av";
 import { uploadFileToS3 } from '../../services/s3Service';
 import { Linking } from 'react-native';
+import ForwardMessageModal from '../../components/ForwardMessageModal';
+
 
 const GroupChatDetail = () => {
   const route = useRoute();
@@ -60,6 +62,9 @@ const GroupChatDetail = () => {
   const [isShowOptions, setIsShowOptions] = useState(false);
   const [deletedMessageIds, setDeletedMessageIds] = useState([]);
   const socketRef = useRef(null);
+
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [messageToForward, setMessageToForward] = useState(null);
 
   // Fetch group details and messages
   // Fetch group details and messages
@@ -648,15 +653,23 @@ const GroupChatDetail = () => {
     const options = message.user._id === user._id
       ? [
           { text: "Thu hồi tin nhắn", onPress: () => handleRevokeMessage(message._id) },
+          { text: "Chuyển tiếp tin nhắn", onPress: () => handleForwardMessage(message) },
           { text: "Xóa tin nhắn", onPress: () => handleDeleteLocalMessage(message._id), style: "destructive" },
           { text: "Hủy", style: "cancel" },
         ]
       : [
+          { text: "Chuyển tiếp tin nhắn", onPress: () => handleForwardMessage(message) },
           { text: "Xóa tin nhắn", onPress: () => handleDeleteLocalMessage(message._id), style: "destructive" },
           { text: "Hủy", style: "cancel" },
         ];
 
     Alert.alert("Tùy chọn tin nhắn", "Chọn chức năng", options, { cancelable: true });
+  };
+
+  // Add this function to handle message forwarding
+  const handleForwardMessage = (message) => {
+    setMessageToForward(message);
+    setShowForwardModal(true);
   };
 
   // Revoke message
@@ -1051,6 +1064,11 @@ const GroupChatDetail = () => {
         />
       )}
       {renderOptionsMenu()}
+      <ForwardMessageModal
+        visible={showForwardModal}
+        onClose={() => setShowForwardModal(false)}
+        message={messageToForward}
+      />
     </View>
   );
 };

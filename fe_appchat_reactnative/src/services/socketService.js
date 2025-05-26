@@ -432,3 +432,35 @@ export const subscribeToGroupDeleted = (callback) => {
   
   return () => socket.off('groupDeleted');
 };
+
+
+// Add this function to emit a message forwarding event
+export const emitForwardMessage = (messageData) => {
+  const socket = getSocket();
+  if (socket) {
+    socket.emit('forwardMessage', {
+      messageId: messageData.messageId,
+      receiverId: messageData.receiverId,
+      isGroup: messageData.isGroup,
+      senderId: messageData.senderId,
+    });
+    console.log('Emitted forwardMessage:', messageData);
+  } else {
+    console.error('Socket not initialized');
+  }
+};
+
+// Add this function to subscribe to forwarded messages
+export const subscribeToForwardedMessages = (callback) => {
+  const socket = getSocket();
+  if (socket) {
+    socket.on('messageForwarded', (data) => {
+      callback(data);
+    });
+    
+    return () => {
+      socket.off('messageForwarded');
+    };
+  }
+  return () => {};
+};

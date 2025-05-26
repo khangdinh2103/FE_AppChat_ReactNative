@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useRef } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   Platform, // Add this import
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useIsFocused } from "@react-navigation/native"; // Make sure this import is present
 import { getFriendRequests, getSentFriendRequests, respondToFriendRequest, cancelFriendRequest  } from "../../services/friendService";
 import { getSocket, initializeSocket, subscribeToFriendRequest, subscribeToFriendRequestResponse } from "../../services/socketService";
 import { AuthContext } from "../../contexts/AuthContext";
@@ -22,6 +22,7 @@ import { vi } from 'date-fns/locale';
 
 const FriendRequests = () => {
   const navigation = useNavigation();
+  const isFocused = useIsFocused(); // This hook is already declared here
   const { user, refreshUser } = useContext(AuthContext);
   const [activeTab, setActiveTab] = useState('received');
   const [receivedRequests, setReceivedRequests] = useState([]);
@@ -29,113 +30,306 @@ const FriendRequests = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [socketConnected, setSocketConnected] = useState(false);
+  const refreshIntervalRef = useRef(null);
+  const silentRefreshingRef = useRef(false);
+  // Remove this duplicate line:
+  // const isFocused = useIsFocused(); // Add this line to import useIsFocused
 
+  // Set up automatic refresh interval when screen is focused
   useEffect(() => {
-    const checkSocketConnection = async () => {
-      try {
-        let socket = getSocket();
-        if (!socket) {
-          socket = await initializeSocket();
-        }
-        if (socket && socket.connected) {
-          console.log("Socket is connected:", socket.id);
-          setSocketConnected(true);
-        } else {
-          console.log("Socket is not connected");
-          setSocketConnected(false);
-        }
-      } catch (error) {
-        console.error("Socket connection error:", error);
-        setSocketConnected(false);
+    if (isFocused) {
+      // Initial fetch with loading indicator only for first load
+      fetchFriendRequests();
+      
+      // Set up interval for silent background refreshes
+      refreshIntervalRef.current = setInterval(() => {
+        silentRefreshingRef.current = true;
+        silentFetchFriendRequests();
+      }, 5000); // Refresh every 5 seconds
+    }
+    
+    return () => {
+      // Clear interval when screen loses focus
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
       }
     };
+  }, [isFocused, activeTab]);
 
-    checkSocketConnection();
-  }, []);
-
-  // Listen for new friend requests via socket
-  useEffect(() => {
-    const unsubscribe = subscribeToFriendRequest((newRequest) => {
-      console.log('Received new friend request:', newRequest);
-      setReceivedRequests((prevRequests) => {
-        // Avoid duplicates
-        const updatedRequests = [...prevRequests];
-        const formattedRequest = formatRequestData(newRequest);
-        const existingRequest = updatedRequests.some(group =>
-          group.requests.some(req => req.id === formattedRequest.id)
-        );
-        if (existingRequest) return updatedRequests;
-
-        const todayGroupIndex = updatedRequests.findIndex(group => group.id === 'today');
-        if (todayGroupIndex !== -1) {
-          updatedRequests[todayGroupIndex].requests.unshift(formattedRequest);
-        } else {
-          updatedRequests.unshift({
-            id: 'today',
-            date: 'Hôm nay',
-            requests: [formattedRequest],
-          });
-        }
-        return updatedRequests;
-      });
-    });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
-
-  // Listen for friend request responses via socket
-  useEffect(() => {
-    const unsubscribe = subscribeToFriendRequestResponse((response) => {
-      console.log('Friend request response:', response);
-      if (activeTab === 'received') {
-        setReceivedRequests((prevRequests) => {
-          const updatedRequests = [...prevRequests];
-          updatedRequests.forEach(group => {
-            group.requests = group.requests.filter(req => req.id !== response.request._id);
-          });
-          return updatedRequests.filter(group => group.requests.length > 0);
-        });
-      } else {
-        setSentRequests((prevRequests) => {
-          const updatedRequests = [...prevRequests];
-          updatedRequests.forEach(group => {
-            group.requests = group.requests.filter(req => req.id !== response.request._id);
-          });
-          return updatedRequests.filter(group => group.requests.length > 0);
-        });
-      }
-    });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [activeTab]);
-
-  // Fix the handleCancelRequest function to work with grouped requests
-  // Update the handleCancelRequest function to handle platform differences for notifications
-  const handleCancelRequest = async (requestId) => {
+  // Silent fetch function that doesn't show loading indicator
+  const silentFetchFriendRequests = async () => {
     try {
-      setLoading(true);
+      if (!user?._id) {
+        await refreshUser();
+      }
+
+      if (activeTab === 'received') {
+        const response = await getFriendRequests();
+        if (response.status === 'success') {
+          const groupedRequests = groupRequestsByDate(response.data);
+          setReceivedRequests(groupedRequests);
+        }
+      } else {
+        const response = await getSentFriendRequests();
+        if (response.status === 'success') {
+          const groupedRequests = groupRequestsByDate(response.data);
+          setSentRequests(groupedRequests);
+        }
+      }
+    } catch (error) {
+      console.error('Silent refresh error:', error);
+      // Don't show errors to user during silent refresh
+    } finally {
+      silentRefreshingRef.current = false;
+    }
+  };
+
+  // After silentFetchFriendRequests function and before the useEffect hooks
+  
+  // Original fetch function with loading indicator for initial load and manual refreshes
+  // Modify the fetchFriendRequests function to only show loading on initial load
+  const fetchFriendRequests = async (retryCount = 0) => {
+  // Only show loading indicator on initial load, not on refreshes
+  if (!silentRefreshingRef.current && receivedRequests.length === 0 && sentRequests.length === 0) {
+  setLoading(true);
+  }
+  setError(null);
+  
+  // Rest of the function remains the same
+  try {
+    if (!user?._id) {
+      await refreshUser();
+    }
+
+    if (activeTab === 'received') {
+      const response = await getFriendRequests();
+      if (response.status === 'success') {
+        const groupedRequests = groupRequestsByDate(response.data);
+        setReceivedRequests(groupedRequests);
+      } else {
+        throw new Error(response.message || 'Không thể tải danh sách lời mời');
+      }
+    } else {
+      const response = await getSentFriendRequests();
+      if (response.status === 'success') {
+        const groupedRequests = groupRequestsByDate(response.data);
+        setSentRequests(groupedRequests);
+      } else {
+        throw new Error(response.message || 'Không thể tải danh sách lời mời đã gửi');
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching friend requests:', error);
+    if (error.message.includes('Máy chủ trả về định dạng không hợp lệ')) {
+      if (retryCount < 2) {
+        console.log(`Retrying fetch friend requests (${retryCount + 1}/3)...`);
+        setTimeout(() => fetchFriendRequests(retryCount + 1), 2000);
+        return;
+      }
+    }
+    setError(error.message || 'Có lỗi xảy ra khi tải danh sách lời mời');
+  } finally {
+    // Only update loading state if we weren't doing a silent refresh
+    if (!silentRefreshingRef.current) {
+      setLoading(false);
+    }
+  }
+  };
+
+  // Also add the groupRequestsByDate function that's being used
+  const groupRequestsByDate = (requests) => {
+    if (!requests || !Array.isArray(requests)) {
+      console.warn('Invalid requests data:', requests);
+      return [];
+    }
+
+    const groups = {};
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const lastWeek = new Date(today);
+    lastWeek.setDate(lastWeek.getDate() - 7);
+
+    requests.forEach(request => {
+      const createdAt = new Date(request.createdAt || request.created_at);
+      let groupId;
+      let groupName;
+
+      if (createdAt >= today) {
+        groupId = 'today';
+        groupName = 'Hôm nay';
+      } else if (createdAt >= yesterday) {
+        groupId = 'yesterday';
+        groupName = 'Hôm qua';
+      } else if (createdAt >= lastWeek) {
+        groupId = 'lastWeek';
+        groupName = 'Tuần này';
+      } else {
+        groupId = 'older';
+        groupName = 'Trước đó';
+      }
+
+      if (!groups[groupId]) {
+        groups[groupId] = {
+          id: groupId,
+          date: groupName,
+          requests: []
+        };
+      }
+
+      // Format the request data
+      const formattedRequest = {
+        id: request._id,
+        name: activeTab === 'received' 
+          ? (request.sender?.name || 'Người dùng')
+          : (request.receiver?.name || 'Người dùng'),
+        avatar: activeTab === 'received'
+          ? request.sender?.primary_avatar
+          : request.receiver?.primary_avatar,
+        source: request.source || 'Tìm kiếm',
+        time: format(new Date(request.createdAt || request.created_at), 'HH:mm', { locale: vi }),
+        status: request.status || 'Đang chờ',
+        message: request.message || '',
+      };
+
+      groups[groupId].requests.push(formattedRequest);
+    });
+
+    // Convert to array and sort by date priority
+    const priorityOrder = { today: 0, yesterday: 1, lastWeek: 2, older: 3 };
+    return Object.values(groups)
+      .sort((a, b) => priorityOrder[a.id] - priorityOrder[b.id]);
+  };
+
+  // Add handlers for accept, reject, and cancel requests
+  // Modify the handlers to use a separate loading state for operations
+  const [operationLoading, setOperationLoading] = useState(false);
+
+  // Update the handleAcceptRequest function
+  const handleAcceptRequest = async (requestId) => {
+    try {
+      setOperationLoading(true);
       
-      const result = await cancelFriendRequest(requestId);
+      // Make sure we have a user ID
+      if (!user?._id) {
+        await refreshUser();
+        
+        // If still no user ID after refresh, show error
+        if (!user?._id) {
+          throw new Error("Không tìm thấy userId. Vui lòng đăng nhập lại.");
+        }
+      }
       
-      // Show success message based on platform
+      // Pass the user ID to the respondToFriendRequest function
+      const result = await respondToFriendRequest(requestId, 'accepted', user._id);
+      
+      // Show success message
       if (Platform.OS === 'android') {
         ToastAndroid.show(
-          result.message || 'Đã hủy lời mời kết bạn thành công',
+          result.message || 'Đã chấp nhận lời mời kết bạn',
           ToastAndroid.SHORT
         );
       } else {
-        // Use Alert for iOS
-        Alert.alert(
-          'Thành công',
-          result.message || 'Đã hủy lời mời kết bạn thành công'
-        );
+        Alert.alert('Thành công', result.message || 'Đã chấp nhận lời mời kết bạn');
       }
       
-      // Update the UI by removing the request from grouped structure
+      // Update UI by removing the accepted request
+      setReceivedRequests(prevGroups => {
+        const updatedGroups = prevGroups.map(group => ({
+          ...group,
+          requests: group.requests.filter(request => request.id !== requestId)
+        }));
+        
+        // Remove any empty groups
+        return updatedGroups.filter(group => group.requests.length > 0);
+      });
+    } catch (error) {
+      console.error("Error accepting friend request:", error);
+      Alert.alert('Lỗi', error.message || 'Không thể chấp nhận lời mời kết bạn');
+    } finally {
+      setOperationLoading(false);
+    }
+  };
+
+  // Update the handleRejectRequest function
+  const handleRejectRequest = async (requestId) => {
+    try {
+      setOperationLoading(true);
+      
+      // Make sure we have a user ID
+      if (!user?._id) {
+        await refreshUser();
+        
+        // If still no user ID after refresh, show error
+        if (!user?._id) {
+          throw new Error("Không tìm thấy userId. Vui lòng đăng nhập lại.");
+        }
+      }
+      
+      // Pass the user ID to the respondToFriendRequest function
+      const result = await respondToFriendRequest(requestId, 'rejected', user._id);
+      
+      // Show success message
+      if (Platform.OS === 'android') {
+        ToastAndroid.show(
+          result.message || 'Đã từ chối lời mời kết bạn',
+          ToastAndroid.SHORT
+        );
+      } else {
+        Alert.alert('Thành công', result.message || 'Đã từ chối lời mời kết bạn');
+      }
+      
+      // Update UI by removing the rejected request
+      setReceivedRequests(prevGroups => {
+        const updatedGroups = prevGroups.map(group => ({
+          ...group,
+          requests: group.requests.filter(request => request.id !== requestId)
+        }));
+        
+        // Remove any empty groups
+        return updatedGroups.filter(group => group.requests.length > 0);
+      });
+    } catch (error) {
+      console.error("Error rejecting friend request:", error);
+      Alert.alert('Lỗi', error.message || 'Không thể từ chối lời mời kết bạn');
+    } finally {
+      setOperationLoading(false);
+    }
+  };
+
+  // Update the handleCancelRequest function
+  const handleCancelRequest = async (requestId) => {
+    try {
+      setOperationLoading(true);
+      
+      // Make sure we have a user ID
+      if (!user?._id) {
+        await refreshUser();
+        
+        // If still no user ID after refresh, show error
+        if (!user?._id) {
+          throw new Error("Không tìm thấy userId. Vui lòng đăng nhập lại.");
+        }
+      }
+      
+      // Pass the user ID to the cancelFriendRequest function
+      const result = await cancelFriendRequest(requestId, user._id);
+      
+      // Show success message
+      if (Platform.OS === 'android') {
+        ToastAndroid.show(
+          result.message || 'Đã hủy lời mời kết bạn',
+          ToastAndroid.SHORT
+        );
+      } else {
+        Alert.alert('Thành công', result.message || 'Đã hủy lời mời kết bạn');
+      }
+      
+      // Update UI by removing the cancelled request
       setSentRequests(prevGroups => {
         const updatedGroups = prevGroups.map(group => ({
           ...group,
@@ -147,257 +341,9 @@ const FriendRequests = () => {
       });
     } catch (error) {
       console.error("Error cancelling friend request:", error);
-      // Still show success message even if there's an error
-      if (Platform.OS === 'android') {
-        ToastAndroid.show(
-          'Đã hủy lời mời kết bạn thành công',
-          ToastAndroid.SHORT
-        );
-      } else {
-        // Use Alert for iOS
-        Alert.alert(
-          'Thành công',
-          'Đã hủy lời mời kết bạn thành công'
-        );
-      }
-      
-      // Update UI by removing the request anyway
-      setSentRequests(prevGroups => {
-        const updatedGroups = prevGroups.map(group => ({
-          ...group,
-          requests: group.requests.filter(request => request.id !== requestId)
-        }));
-        
-        // Remove any empty groups
-        return updatedGroups.filter(group => group.requests.length > 0);
-      });
+      Alert.alert('Lỗi', error.message || 'Không thể hủy lời mời kết bạn');
     } finally {
-      setLoading(false);
-    }
-  };
-  
-  const fetchFriendRequests = async (retryCount = 0) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      if (!user?._id) {
-        await refreshUser();
-      }
-
-      if (activeTab === 'received') {
-        const response = await getFriendRequests();
-        if (response.status === 'success') {
-          const groupedRequests = groupRequestsByDate(response.data);
-          setReceivedRequests(groupedRequests);
-        } else {
-          throw new Error(response.message || 'Không thể tải danh sách lời mời');
-        }
-      } else {
-        const response = await getSentFriendRequests();
-        if (response.status === 'success') {
-          const groupedRequests = groupRequestsByDate(response.data);
-          setSentRequests(groupedRequests);
-        } else {
-          throw new Error(response.message || 'Không thể tải danh sách lời mời đã gửi');
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching friend requests:', error);
-      if (error.message.includes('Máy chủ trả về định dạng không hợp lệ')) {
-        if (retryCount < 2) {
-          console.log(`Retrying fetch friend requests (${retryCount + 1}/3)...`);
-          setTimeout(() => fetchFriendRequests(retryCount + 1), 2000);
-          return;
-        }
-        setError('Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại sau.');
-      } else if (error.message.includes('Network Error') || error.code === 'ECONNABORTED') {
-        if (retryCount < 2) {
-          console.log(`Retrying fetch friend requests (${retryCount + 1}/3)...`);
-          setTimeout(() => fetchFriendRequests(retryCount + 1), 2000);
-          return;
-        }
-        setError('Lỗi kết nối mạng. Vui lòng kiểm tra kết nối internet của bạn và thử lại.');
-      } else {
-        setError(error.message || 'Không thể tải danh sách lời mời kết bạn');
-      }
-    } finally {
-      if (!error) setLoading(false);
-    }
-  };
-
-  const groupRequestsByDate = (requests) => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-
-    const grouped = [];
-
-    const todayRequests = requests.filter(req => {
-      const reqDate = new Date(req.created_at);
-      return reqDate.toDateString() === today.toDateString();
-    });
-
-    if (todayRequests.length > 0) {
-      grouped.push({
-        id: 'today',
-        date: 'Hôm nay',
-        requests: todayRequests.map(formatRequestData),
-      });
-    }
-
-    const yesterdayRequests = requests.filter(req => {
-      const reqDate = new Date(req.created_at);
-      return reqDate.toDateString() === yesterday.toDateString();
-    });
-
-    if (yesterdayRequests.length > 0) {
-      grouped.push({
-        id: 'yesterday',
-        date: 'Hôm qua',
-        requests: yesterdayRequests.map(formatRequestData),
-      });
-    }
-
-    const thisMonthRequests = requests.filter(req => {
-      const reqDate = new Date(req.created_at);
-      return (
-        reqDate >= thisMonth &&
-        reqDate.toDateString() !== today.toDateString() &&
-        reqDate.toDateString() !== yesterday.toDateString()
-      );
-    });
-
-    if (thisMonthRequests.length > 0) {
-      grouped.push({
-        id: 'thisMonth',
-        date: `Tháng ${thisMonth.getMonth() + 1}, ${thisMonth.getFullYear()}`,
-        requests: thisMonthRequests.map(formatRequestData),
-      });
-    }
-
-    const olderRequests = requests.filter(req => {
-      const reqDate = new Date(req.created_at);
-      return reqDate < thisMonth;
-    });
-
-    if (olderRequests.length > 0) {
-      grouped.push({
-        id: 'older',
-        date: 'Cũ hơn',
-        requests: olderRequests.map(formatRequestData),
-      });
-    }
-
-    return grouped;
-  };
-
-  const formatRequestData = (request) => {
-    const date = new Date(request.created_at);
-    const formattedDate = format(date, 'dd/MM', { locale: vi });
-
-    if (activeTab === 'received') {
-      return {
-        id: request._id,
-        name: request.sender.name,
-        status: request.message || "Muốn kết bạn với bạn",
-        source: "Từ tìm kiếm",
-        time: formattedDate,
-        avatar: request.sender.primary_avatar,
-        userId: request.sender._id,
-      };
-    } else {
-      return {
-        id: request._id,
-        name: request.receiver.name,
-        status: request.message || "Đã gửi lời mời kết bạn",
-        source: "Từ tìm kiếm",
-        time: formattedDate,
-        avatar: request.receiver.primary_avatar,
-        userId: request.receiver._id,
-      };
-    }
-  };
-
-  const handleAcceptRequest = async (requestId) => {
-    try {
-      setLoading(true);
-      
-      const result = await respondToFriendRequest(requestId, 'accepted', user?._id);
-      
-      // Show success message based on platform
-      if (Platform.OS === 'android') {
-        ToastAndroid.show(
-          result.message || 'Đã chấp nhận lời mời kết bạn thành công',
-          ToastAndroid.SHORT
-        );
-      } else {
-        // Use Alert for iOS
-        Alert.alert(
-          'Thành công',
-          result.message || 'Đã chấp nhận lời mời kết bạn thành công'
-        );
-      }
-      
-      // Update the UI by removing the request from grouped structure
-      setReceivedRequests(prevGroups => {
-        const updatedGroups = prevGroups.map(group => ({
-          ...group,
-          requests: group.requests.filter(request => request.id !== requestId)
-        }));
-        
-        // Remove any empty groups
-        return updatedGroups.filter(group => group.requests.length > 0);
-      });
-      
-      // Reload all data
-      fetchData();
-      
-      // Navigate back to Contacts screen to see updated friends list
-      if (navigation && shouldNavigateBack) {
-        navigation.navigate('Contacts', { refresh: true });
-      }
-    } catch (error) {
-      console.error("Error accepting friend request:", error);
-      if (Platform.OS === 'android') {
-        ToastAndroid.show(
-          'Đã xảy ra lỗi khi chấp nhận lời mời kết bạn',
-          ToastAndroid.SHORT
-        );
-      } else {
-        Alert.alert(
-          'Lỗi',
-          'Đã xảy ra lỗi khi chấp nhận lời mời kết bạn'
-        );
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRejectRequest = async (requestId) => {
-    try {
-      setLoading(true);
-      if (!user?._id) {
-        await refreshUser();
-      }
-      const response = await respondToFriendRequest(requestId, 'rejected', user._id);
-      if (response.status === 'success') {
-        Alert.alert('Thành công', 'Đã từ chối lời mời kết bạn');
-      }
-    } catch (error) {
-      console.error('Error rejecting friend request:', error);
-      if (error.message === 'Không thể khởi tạo socket. Vui lòng kiểm tra kết nối.') {
-        Alert.alert('Lỗi', 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối và thử lại.');
-      } else if (error.message === 'Hết thời gian chờ phản hồi từ máy chủ') {
-        Alert.alert('Lỗi', 'Máy chủ không phản hồi. Vui lòng thử lại sau.');
-      } else {
-        Alert.alert('Lỗi', 'Không thể từ chối lời mời kết bạn. Vui lòng thử lại.');
-      }
-    } finally {
-      setLoading(false);
+      setOperationLoading(false);
     }
   };
 
@@ -472,6 +418,7 @@ const FriendRequests = () => {
     </View>
   );
 
+  // In the return section, update the rendering logic
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -480,9 +427,8 @@ const FriendRequests = () => {
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Lời mời kết bạn</Text>
-          <TouchableOpacity onPress={() => fetchFriendRequests()}>
-            <Ionicons name="refresh" size={24} color="#fff" />
-          </TouchableOpacity>
+          {/* Empty view to maintain header layout */}
+          <View style={{ width: 24 }} />
         </View>
 
         <View style={styles.tabs}>
@@ -500,7 +446,8 @@ const FriendRequests = () => {
           </TouchableOpacity>
         </View>
 
-        {loading ? (
+        {/* Only show loading indicator on initial load */}
+        {loading && (receivedRequests.length === 0 && sentRequests.length === 0) ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#0091FF" />
           </View>
