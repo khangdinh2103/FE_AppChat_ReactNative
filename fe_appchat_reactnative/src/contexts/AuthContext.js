@@ -157,7 +157,7 @@ export const AuthProvider = ({ children }) => {
       setSearchResults(results);
       return results;
     } catch (error) {
-      console.error("Lỗi tìm kiếm người dùng:", error);
+      // console.error("Lỗi tìm kiếm người dùng:", error);
       throw error;
     }
   };

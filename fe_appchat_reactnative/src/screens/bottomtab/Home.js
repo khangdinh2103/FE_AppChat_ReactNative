@@ -167,7 +167,7 @@ const Home = () => {
       }));
       setDisplayData(formattedResults);
     } catch (error) {
-      console.error("Search error:", error);
+      // console.error("Search error:", error);
       Alert.alert("Lỗi", "Không thể tìm kiếm người dùng: " + error.message);
     }
   };

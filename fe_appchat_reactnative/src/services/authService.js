@@ -162,10 +162,10 @@ export const searchUsers = async (query) => {
       throw new Error(response.data.message || "Tìm kiếm người dùng thất bại");
     }
   } catch (error) {
-    console.error(
-      "❌ Lỗi khi tìm kiếm người dùng:",
-      error.response?.data || error.message
-    );
+    // console.error(
+    //   "❌ Lỗi khi tìm kiếm người dùng:",
+    //   error.response?.data || error.message
+    // );
     throw error.response?.data || { message: error.message || "Lỗi không xác định" };
   }
 };
