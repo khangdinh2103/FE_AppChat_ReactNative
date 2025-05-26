@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,26 +12,50 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AuthContext } from '../../contexts/AuthContext';
-import { checkConversationWithFriend } from '../../services/chatService'; // Adjust the path as necessary
-import { sendFriendRequest } from '../../services/friendService';
+import { checkConversationWithFriend } from '../../services/chatService';
+import { sendFriendRequest, checkFriendshipStatus } from '../../services/friendService';
 
 const AddFriendConfirmation = ({ navigation, route }) => {
   const { userData } = route.params;
   const { user, refreshUser } = useContext(AuthContext);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [friendshipStatus, setFriendshipStatus] = useState(null); // State để lưu trạng thái bạn bè
 
-  // Update the handleAddFriend function to handle errors better
+  // Kiểm tra trạng thái bạn bè khi component được tải
+  useEffect(() => {
+    const fetchFriendshipStatus = async () => {
+      try {
+        setIsLoading(true);
+        if (!user?._id) {
+          await refreshUser();
+        }
+        const status = await checkFriendshipStatus(user._id, userData.id);
+        setFriendshipStatus(status);
+      } catch (error) {
+        console.error('Error checking friendship status:', error);
+        Alert.alert('Lỗi', 'Không thể kiểm tra trạng thái kết bạn');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchFriendshipStatus();
+  }, [user, userData.id]);
+
   const handleAddFriend = async () => {
     try {
       setIsLoading(true);
       if (!user?._id) {
         await refreshUser();
       }
-      
+
       const response = await sendFriendRequest(user._id, userData.id, message);
-  
-      // Always show success alert
+
+      // Cập nhật trạng thái sau khi gửi lời mời
+      const updatedStatus = await checkFriendshipStatus(user._id, userData.id);
+      setFriendshipStatus(updatedStatus);
+
       Alert.alert(
         'Thành công',
         response.message || 'Đã gửi lời mời kết bạn',
@@ -39,14 +63,12 @@ const AddFriendConfirmation = ({ navigation, route }) => {
       );
     } catch (error) {
       console.error('Error adding friend:', error);
-  
-      // Check for specific error messages
+
       if (error.message && error.message.includes('đã tồn tại')) {
         Alert.alert('Thông báo', 'Bạn đã gửi lời mời kết bạn cho người này rồi');
       } else if (error.message && error.message.includes('đã là bạn bè')) {
         Alert.alert('Thông báo', 'Người này đã là bạn bè của bạn');
       } else {
-        // For any other error, still show a success message
         Alert.alert(
           'Thành công',
           'Đã gửi lời mời kết bạn',
@@ -57,28 +79,26 @@ const AddFriendConfirmation = ({ navigation, route }) => {
       setIsLoading(false);
     }
   };
-  
+
   const handleStartChat = async () => {
     try {
       setIsLoading(true);
-  
+
       if (!user?._id) {
         throw new Error("Không tìm thấy userId. Vui lòng đăng nhập lại.");
       }
-  
+
       let existingConversation = null;
-  
+
       try {
         const res = await checkConversationWithFriend(userData.id, user._id);
         existingConversation = res.data.data;
       } catch (error) {
-        // Nếu là 404 (không có cuộc trò chuyện), thì bỏ qua nhẹ nhàng
         if (!(error.response && error.response.status === 404)) {
           // console.error('Lỗi khi kiểm tra cuộc trò chuyện:', error);
         }
-        // Không in ra gì nếu là 404
       }
-  
+
       if (existingConversation) {
         const formattedMessages = existingConversation.messages?.map(msg => ({
           _id: msg._id || msg.message_id,
@@ -90,7 +110,7 @@ const AddFriendConfirmation = ({ navigation, route }) => {
             avatar: msg.sender_id === user._id ? user.primary_avatar : userData.avatar,
           },
         })) || [];
-  
+
         navigation.navigate('ChatDetail', {
           name: userData.name,
           avatar: userData.avatar || null,
@@ -100,7 +120,6 @@ const AddFriendConfirmation = ({ navigation, route }) => {
           messages: formattedMessages,
         });
       } else {
-        // Không có cuộc trò chuyện -> tạo mới
         navigation.navigate('ChatDetail', {
           name: userData.name,
           avatar: userData.avatar || null,
@@ -115,25 +134,90 @@ const AddFriendConfirmation = ({ navigation, route }) => {
       setIsLoading(false);
     }
   };
-  
-  
 
-  // // Function to check for existing conversation
-  // const getExistingConversationId = async (friendId) => {
-  //   try {
-  //     const { user } = useContext(AuthContext); // Get user from AuthContext
-  //     console.log('User from AuthContext:', user);
-  //     if (!user?._id) {
-  //       throw new Error("Không tìm thấy userId. Vui lòng đăng nhập lại.");
-  //     }
-  
-  //     const response = await checkConversationWithFriend(friendId);
-  //     return response.data.data?._id || null; // Adjust based on your API response structure
-  //   } catch (error) {
-  //     console.error('Error checking existing conversation:', error);
-  //     return null;
-  //   }
-  // };
+  // Hàm xử lý khi chấp nhận lời mời (nếu trạng thái là "requested")
+  const handleAcceptRequest = async () => {
+    try {
+      setIsLoading(true);
+      const response = await respondToFriendRequest(friendshipStatus.requestId, 'accepted', user._id);
+      
+      // Cập nhật trạng thái sau khi chấp nhận
+      const updatedStatus = await checkFriendshipStatus(user._id, userData.id);
+      setFriendshipStatus(updatedStatus);
+
+      Alert.alert(
+        'Thành công',
+        response.message || 'Đã chấp nhận lời mời kết bạn',
+        [{ text: 'OK' }],
+      );
+    } catch (error) {
+      console.error('Error accepting friend request:', error);
+      Alert.alert('Lỗi', 'Không thể chấp nhận lời mời kết bạn');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Hàm render nút hoặc thông báo dựa trên trạng thái
+  const renderFriendshipAction = () => {
+    if (!friendshipStatus) {
+      return <ActivityIndicator size="small" color="#4E7DFF" />;
+    }
+
+    switch (friendshipStatus.status) {
+      case 'none':
+        return (
+          <>
+            <View style={styles.messageContainer}>
+              <Text style={styles.messageLabel}>Lời nhắn:</Text>
+              <TextInput
+                style={styles.messageInput}
+                placeholder="Nhập lời nhắn kèm theo lời mời kết bạn"
+                value={message}
+                onChangeText={setMessage}
+                multiline
+                maxLength={100}
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.addButton, isLoading && styles.disabledButton]}
+              onPress={handleAddFriend}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.addButtonText}>Thêm bạn</Text>
+              )}
+            </TouchableOpacity>
+          </>
+        );
+      case 'pending':
+        return (
+          <Text style={styles.statusText}>Đã gửi lời mời kết bạn, đang chờ phản hồi</Text>
+        );
+      case 'requested':
+        return (
+          <TouchableOpacity
+            style={[styles.acceptButton, isLoading && styles.disabledButton]}
+            onPress={handleAcceptRequest}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.acceptButtonText}>Chấp nhận lời mời</Text>
+            )}
+          </TouchableOpacity>
+        );
+      case 'friends':
+        return (
+          <Text style={styles.statusText}>Đã là bạn bè</Text>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -161,31 +245,9 @@ const AddFriendConfirmation = ({ navigation, route }) => {
           </Text>
         </View>
 
-        <View style={styles.messageContainer}>
-          <Text style={styles.messageLabel}>Lời nhắn:</Text>
-          <TextInput
-            style={styles.messageInput}
-            placeholder="Nhập lời nhắn kèm theo lời mời kết bạn"
-            value={message}
-            onChangeText={setMessage}
-            multiline
-            maxLength={100}
-          />
-        </View>
+        {renderFriendshipAction()}
 
         <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={[styles.addButton, isLoading && styles.disabledButton]}
-            onPress={handleAddFriend}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.addButtonText}>Thêm bạn</Text>
-            )}
-          </TouchableOpacity>
-
           <TouchableOpacity
             style={[styles.chatButton, isLoading && styles.disabledButton]}
             onPress={handleStartChat}
@@ -277,6 +339,20 @@ const styles = StyleSheet.create({
     width: '80%',
     alignItems: 'center',
   },
+  acceptButton: {
+    backgroundColor: '#28A745',
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 24,
+    width: '80%',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  acceptButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
   disabledButton: {
     backgroundColor: '#a3bffa',
   },
@@ -299,6 +375,12 @@ const styles = StyleSheet.create({
     color: '#4E7DFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  statusText: {
+    fontSize: 16,
+    color: '#666',
+    marginVertical: 20,
+    textAlign: 'center',
   },
 });
 

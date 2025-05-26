@@ -41,7 +41,7 @@ import { Linking } from 'react-native';
 const GroupChatDetail = () => {
   const route = useRoute();
   const navigation = useNavigation();
-  console.log("GroupChatDetail route params:", route.params);
+  //console.log("GroupChatDetail route params:", route.params);
 
   // Extract parameters with fallback values
   const { group, groupId: routeGroupId, groupName: routeGroupName, groupAvatar: routeGroupAvatar } =
@@ -62,19 +62,25 @@ const GroupChatDetail = () => {
   const socketRef = useRef(null);
 
   // Fetch group details and messages
+  // Fetch group details and messages
   useEffect(() => {
-    const fetchGroupData = async () => {
+    const fetchGroupData = async (showLoading = true) => {
       try {
         if (!groupId || typeof groupId !== "string") {
-          console.error("Invalid groupId:", groupId);
+          //console.error("Invalid groupId:", groupId);
           Alert.alert("Lỗi", "ID nhóm không hợp lệ.");
           navigation.goBack();
           return;
         }
-        setLoading(true);
-        console.log("Fetching group details for groupId:", groupId);
+        
+        // Only show loading indicator on initial load
+        if (showLoading) {
+          setLoading(true);
+        }
+        
+        //console.log("Fetching group details for groupId:", groupId);
         const groupData = await getGroupDetails(groupId);
-        console.log("Group data received:", groupData);
+        //console.log("Group data received:", groupData);
 
         if (!groupData) {
           throw new Error("Không thể tải thông tin nhóm");
@@ -86,28 +92,48 @@ const GroupChatDetail = () => {
         // Fetch messages after getting conversation_id
         await fetchMessages(groupData.conversation_id);
       } catch (error) {
-        console.error("Error fetching group data:", error);
-        Alert.alert(
-          "Lỗi",
-          `Không thể tải thông tin nhóm: ${error.message || "Vui lòng thử lại."}`,
-          [{ text: "Quay lại", onPress: () => navigation.goBack() }]
-        );
+        //console.error("Error fetching group data:", error);
+        if (showLoading) {
+          Alert.alert(
+            "Lỗi",
+            `Không thể tải thông tin nhóm: ${error.message || "Vui lòng thử lại."}`,
+            [{ text: "Quay lại", onPress: () => navigation.goBack() }]
+          );
+        }
       } finally {
-        setLoading(false);
+        if (showLoading) {
+          setLoading(false);
+        }
       }
     };
 
     if (groupId) {
-      fetchGroupData();
+      // Initial load with loading indicator
+      fetchGroupData(true);
       loadDeletedMessageIds();
+      
+      // Set up interval to refresh data every 5 seconds without loading indicator
+      const refreshInterval = setInterval(() => {
+        //console.log("Auto-refreshing group data without loading indicator");
+        if (groupId) {
+          fetchGroupData(false);
+        }
+      }, 7000); // 5000 milliseconds = 5 seconds
+      
+      // Clean up interval on component unmount
+      return () => {
+        clearInterval(refreshInterval);
+        //console.log("Cleared refresh interval");
+      };
     } else {
-      console.error("No groupId available");
+      //console.error("No groupId available");
       Alert.alert("Lỗi", "Không thể xác định ID nhóm", [
         { text: "Quay lại", onPress: () => navigation.goBack() },
       ]);
     }
   }, [groupId]);
 
+  
   // Socket setup
   useEffect(() => {
     const setupSocket = async () => {
@@ -116,7 +142,7 @@ const GroupChatDetail = () => {
         
         // Check if we already have a socket reference and clean it up if needed
         if (socketRef.current) {
-          console.log("Cleaning up previous socket connection");
+          // //console.log("Cleaning up previous socket connection");
           socketRef.current.off("receiveGroupMessage");
           socketRef.current.off("messageRevoked");
           if (groupId) {
@@ -133,23 +159,23 @@ const GroupChatDetail = () => {
           
           // Add listeners with proper logging
           socketInstance.on("receiveGroupMessage", (data) => {
-            console.log(`Received group message in room ${groupId}:`, data);
+            // //console.log(`Received group message in room ${groupId}:`, data);
             handleReceiveMessage(data);
           });
           
           socketInstance.on("messageRevoked", (data) => {
-            console.log(`Received message revoked event in room ${groupId}:`, data);
+            //console.log(`Received message revoked event in room ${groupId}:`, data);
             handleMessageRevoked(data);
           });
           
           // Make sure we're properly joining the group room
-          console.log(`Joining group room: ${groupId}`);
+          //console.log(`Joining group room: ${groupId}`);
           socketInstance.emit("joinGroupRoom", { groupId }, (response) => {
-            console.log(`Join group room response:`, response);
+            //console.log(`Join group room response:`, response);
           });
         }
       } catch (error) {
-        console.error("Error setting up socket:", error);
+        //console.error("Error setting up socket:", error);
       }
     };
   
@@ -159,7 +185,7 @@ const GroupChatDetail = () => {
   
     return () => {
       if (socketRef.current) {
-        console.log(`Leaving group room: ${groupId}`);
+        //console.log(`Leaving group room: ${groupId}`);
         socketRef.current.emit("leaveGroupRoom", { groupId });
         socketRef.current.off("receiveGroupMessage");
         socketRef.current.off("messageRevoked");
@@ -171,11 +197,11 @@ const GroupChatDetail = () => {
   const handleReceiveMessage = useCallback((data) => {
     const { message, conversationId: msgConvId } = data;
     
-    console.log(`Processing received message for conversation ${msgConvId}, our conversation: ${conversationId}`);
+    //console.log(`Processing received message for conversation ${msgConvId}, our conversation: ${conversationId}`);
     
     // Make sure this message is for our conversation and not already deleted
     if (msgConvId === conversationId && !deletedMessageIds.includes(message._id)) {
-      console.log("Processing message:", message);
+      //console.log("Processing message:", message);
       
       // Find the member who sent this message
       const memberInfo = members.find(m => 
@@ -196,33 +222,40 @@ const GroupChatDetail = () => {
         },
       };
       
-      console.log("Formatted message user:", formattedMessage.user);
+      //console.log("Formatted message user:", formattedMessage.user);
       
       if (message.is_revoked) {
         formattedMessage.text = "Tin nhắn đã được thu hồi";
         formattedMessage.revoked = true;
       } else if (message.message_type === "image") {
-        formattedMessage.image = message.content;
+        // Handle both direct content and file_meta formats
+        formattedMessage.image = message.file_meta?.url || message.content;
       } else if (message.message_type === "video") {
-        formattedMessage.video = message.content;
+        // Handle both direct content and file_meta formats
+        formattedMessage.video = message.file_meta?.url || message.content;
       } else if (message.message_type === "file") {
         formattedMessage.text = message.file_meta?.file_name || "File";
-        formattedMessage.file = message.file_meta;
+        formattedMessage.file = {
+          url: message.file_meta?.url || message.content,
+          file_name: message.file_meta?.file_name || "Unknown",
+          file_type: message.file_meta?.file_type || "application/octet-stream",
+          file_size: message.file_meta?.file_size || 0,
+        };
       } else {
         formattedMessage.text = message.content;
       }
-
+  
       setMessages((prevMessages) => {
         const messageExists = prevMessages.some((msg) => msg._id === formattedMessage._id);
         if (messageExists) {
-          console.log(`Message ${formattedMessage._id} already exists, not adding again`);
+          //console.log(`Message ${formattedMessage._id} already exists, not adding again`);
           return prevMessages;
         }
-        console.log(`Adding new message ${formattedMessage._id} to chat`);
+        //console.log(`Adding new message ${formattedMessage._id} to chat`);
         return GiftedChat.append(prevMessages, [formattedMessage]);
       });
     } else {
-      console.log(`Ignoring message: either wrong conversation (${msgConvId} vs ${conversationId}) or deleted`);
+      //console.log(`Ignoring message: either wrong conversation (${msgConvId} vs ${conversationId}) or deleted`);
     }
   }, [conversationId, deletedMessageIds, members]);
   // Message subscription
@@ -242,9 +275,9 @@ const GroupChatDetail = () => {
       if (!convId) {
         throw new Error("conversationId không hợp lệ");
       }
-      console.log("Fetching messages for conversationId:", convId);
+      //console.log("Fetching messages for conversationId:", convId);
       const response = await getMessages(convId);
-      console.log("Messages API response:", response.data);
+      //console.log("Messages API response:", response.data);
   
       if (response.data.status === "success" && Array.isArray(response.data.data)) {
         const formattedMessages = response.data.data
@@ -265,7 +298,7 @@ const GroupChatDetail = () => {
               avatar: memberInfo?.user?.primary_avatar || msg.sender_id?.primary_avatar || null,
             };
             
-            console.log("Message sender:", sender);
+            //console.log("Message sender:", sender);
             
             const baseMessage = {
               _id: msg._id,
@@ -276,9 +309,11 @@ const GroupChatDetail = () => {
               baseMessage.text = "Tin nhắn đã được thu hồi";
               baseMessage.revoked = true;
             } else if (msg.message_type === "image") {
-              baseMessage.image = msg.content;
+              // Handle both direct content and file_meta formats
+              baseMessage.image = msg.file_meta?.url || msg.content;
             } else if (msg.message_type === "video") {
-              baseMessage.video = msg.content;
+              // Handle both direct content and file_meta formats
+              baseMessage.video = msg.file_meta?.url || msg.content;
             } else if (msg.message_type === "file") {
               baseMessage.text = msg.file_meta?.file_name || "File";
               baseMessage.file = {
@@ -298,11 +333,11 @@ const GroupChatDetail = () => {
         );
         setMessages(filteredMessages);
       } else {
-        console.warn("Invalid messages response:", response.data);
+        //console.warn("Invalid messages response:", response.data);
         setMessages([]);
       }
     } catch (error) {
-      console.error("Error fetching messages:", error);
+      //console.error("Error fetching messages:", error);
       setMessages([]);
       if (!error.response || error.response.status < 500) {
         Alert.alert("Lỗi", "Không thể tải tin nhắn. Vui lòng thử lại.");
@@ -310,20 +345,18 @@ const GroupChatDetail = () => {
     }
   };
 
-  
-
   // Handle revoked messages
   const handleMessageRevoked = useCallback((data) => {
-    console.log("Message revoked in group chat, received data:", data);
+    //console.log("Message revoked in group chat, received data:", data);
     
     // Kiểm tra cả conversationId và groupId
     if (data.messageId) {
-      console.log("Updating local messages for revoked messageId:", data.messageId);
+      //console.log("Updating local messages for revoked messageId:", data.messageId);
       
       setMessages(prevMessages => 
         prevMessages.map(msg => {
           if (msg._id === data.messageId) {
-            console.log("Found message to revoke in local state:", msg._id);
+            //console.log("Found message to revoke in local state:", msg._id);
             return { 
               ...msg, 
               text: "Tin nhắn đã được thu hồi", 
@@ -337,7 +370,7 @@ const GroupChatDetail = () => {
         })
       );
     } else {
-      console.log("Ignoring revoke event - no messageId provided");
+      //console.log("Ignoring revoke event - no messageId provided");
     }
   }, []);
   // Send message
@@ -373,7 +406,7 @@ const GroupChatDetail = () => {
         const response = await sendGroupMessage(messageData);
         if (response.data.status === "success") {
           // Emit message to all members in the group
-          console.log("Emitting group message to room:", groupId);
+          //console.log("Emitting group message to room:", groupId);
           emitGroupMessage({ 
             message: response.data.data, 
             groupId,
@@ -401,7 +434,7 @@ const GroupChatDetail = () => {
           throw new Error(response.data.message || "Không thể gửi tin nhắn.");
         }
       } catch (error) {
-        console.error("Error sending message:", error);
+        //console.error("Error sending message:", error);
         if (tempMessage) {
           setMessages((previousMessages) =>
             previousMessages.filter((msg) => msg._id !== tempMessage._id)
@@ -419,7 +452,7 @@ const GroupChatDetail = () => {
       try {
         if (!conversationId) throw new Error("conversationId không hợp lệ");
   
-        console.log("Uploading file to S3:", { mediaType, fileUri, fileName, fileType, fileSize });
+        //console.log("Uploading file to S3:", { mediaType, fileUri, fileName, fileType, fileSize });
         
         // Upload file to S3 first
         const fileData = await uploadFileToS3(fileUri, {
@@ -428,7 +461,7 @@ const GroupChatDetail = () => {
           fileSize
         });
         
-        console.log("S3 upload response:", fileData);
+        //console.log("S3 upload response:", fileData);
   
         // Create temporary message to show in UI
         tempMessage = {
@@ -516,7 +549,7 @@ const GroupChatDetail = () => {
           throw new Error(response.data.message || "Không thể gửi tệp.");
         }
       } catch (error) {
-        console.error("Error sending media:", error);
+        //console.error("Error sending media:", error);
         if (tempMessage) {
           setMessages((previousMessages) =>
             previousMessages.filter((msg) => msg._id !== tempMessage._id)
@@ -539,7 +572,7 @@ const GroupChatDetail = () => {
         await handleSendMedia("image", uri, fileName || "image.jpg", mimeType || "image/jpeg", fileSize || 0);
       }
     } catch (error) {
-      console.error("Error picking image:", error);
+      //console.error("Error picking image:", error);
       Alert.alert("Lỗi", "Không thể chọn ảnh.");
     }
   };
@@ -559,7 +592,7 @@ const GroupChatDetail = () => {
         await handleSendMedia("video", uri, fileName || "video.mp4", mimeType || "video/mp4", fileSize || 0);
       }
     } catch (error) {
-      console.error("Error picking video:", error);
+      //console.error("Error picking video:", error);
       Alert.alert("Lỗi", "Không thể chọn video.");
     }
   };
@@ -586,7 +619,7 @@ const GroupChatDetail = () => {
         await handleSendMedia("image", uri, fileName || "photo.jpg", mimeType || "image/jpeg", fileSize || 0);
       }
     } catch (error) {
-      console.error("Error capturing photo:", error);
+      //console.error("Error capturing photo:", error);
       Alert.alert("Lỗi", "Không thể chụp ảnh.");
     }
   };
@@ -605,7 +638,7 @@ const GroupChatDetail = () => {
         await handleSendMedia("file", uri, name, mimeType || "application/octet-stream", size || 0);
       }
     } catch (error) {
-      console.error("Error picking document:", error);
+      //console.error("Error picking document:", error);
       Alert.alert("Lỗi", "Không thể chọn tài liệu.");
     }
   };
@@ -629,7 +662,7 @@ const GroupChatDetail = () => {
   // Revoke message
   const handleRevokeMessage = async (messageId) => {
     try {
-      console.log("Attempting to revoke message:", messageId);
+      //console.log("Attempting to revoke message:", messageId);
       
       // Kiểm tra tin nhắn tồn tại và thuộc về người dùng
       const messageToRevoke = messages.find(msg => msg._id === messageId);
@@ -659,7 +692,7 @@ const GroupChatDetail = () => {
       
       // Gọi API để thu hồi tin nhắn
       const response = await revokeMessage(messageId);
-      console.log("Revoke message response:", response);
+      //console.log("Revoke message response:", response);
       
       // Đảm bảo socket đã được khởi tạo và đang kết nối
       if (socketRef.current && socketRef.current.connected) {
@@ -670,15 +703,15 @@ const GroupChatDetail = () => {
           conversationId 
         };
         
-        console.log("Emitting revokeMessage event with data:", revokeData);
+        //console.log("Emitting revokeMessage event with data:", revokeData);
         socketRef.current.emit("revokeMessage", revokeData);
       } else {
-        console.warn("Socket not available or not connected for emitting revokeMessage event");
+        //console.warn("Socket not available or not connected for emitting revokeMessage event");
         Alert.alert("Thông báo", "Tin nhắn đã được thu hồi trên thiết bị của bạn, nhưng có thể chưa được cập nhật cho người khác do kết nối không ổn định.");
       }
       
     } catch (error) {
-      console.error("Error revoking message:", error);
+      //console.error("Error revoking message:", error);
       Alert.alert("Lỗi", `Không thể thu hồi tin nhắn: ${error.message || "Vui lòng thử lại"}`);
     }
   };
@@ -696,7 +729,7 @@ const GroupChatDetail = () => {
       const key = `deleted_group_messages_${groupId}_${user._id}`;
       await AsyncStorage.setItem(key, JSON.stringify(ids));
     } catch (error) {
-      console.error("Error storing deleted message IDs:", error);
+      //console.error("Error storing deleted message IDs:", error);
     }
   };
 
@@ -709,7 +742,7 @@ const GroupChatDetail = () => {
         setDeletedMessageIds(JSON.parse(storedIds));
       }
     } catch (error) {
-      console.error("Error loading deleted message IDs:", error);
+      //console.error("Error loading deleted message IDs:", error);
     }
   };
 
@@ -721,7 +754,7 @@ const GroupChatDetail = () => {
       return;
     }
     
-    console.log("Opening URL:", url);
+    //console.log("Opening URL:", url);
     
     const supported = await Linking.canOpenURL(url);
     if (supported) {
@@ -730,7 +763,7 @@ const GroupChatDetail = () => {
       Alert.alert("Lỗi", "Không thể mở nội dung này. URL không được hỗ trợ.");
     }
   } catch (error) {
-    console.error("Error opening file:", error);
+    //console.error("Error opening file:", error);
     Alert.alert("Lỗi", `Không thể mở nội dung: ${error.message}`);
   }
 };

@@ -85,7 +85,7 @@ export const getGroupDetails = async (groupId) => {
     }
 
     const group = response.data.data;
-    console.log('Group details response:', response.data);
+    // console.log('Group details response:', response.data);
     return {
       _id: group._id,
       name: group.name || "Unnamed Group",

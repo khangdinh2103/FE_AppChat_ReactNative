@@ -74,7 +74,6 @@ const ChatDetail = () => {
   };
 
   
-  // Update fetchMessages to handle video messages
   const fetchMessages = async () => {
     try {
       setLoading(true);
@@ -97,9 +96,11 @@ const ChatDetail = () => {
               baseMessage.text = "Tin nhắn đã được thu hồi";
               baseMessage.revoked = true;
             } else if (msg.message_type === 'image') {
-              baseMessage.image = msg.content;
+              // Handle both direct content and file_meta formats
+              baseMessage.image = msg.file_meta?.url || msg.content;
             } else if (msg.message_type === 'video') {
-              baseMessage.video = msg.content;
+              // Handle both direct content and file_meta formats
+              baseMessage.video = msg.file_meta?.url || msg.content;
             } else if (msg.message_type === 'file') {
               baseMessage.text = msg.file_meta?.file_name || 'File';
               baseMessage.file = {
@@ -117,12 +118,11 @@ const ChatDetail = () => {
         const filteredMessages = formattedMessages.filter(
           msg => !deletedMessageIds.includes(msg._id)
         );
-
+  
         // Process messages to group consecutive images
         const processedMessages = processMessagesForImageGrid(filteredMessages);
         
         setMessages(processedMessages);
-        // setMessages(filteredMessages);
       }
     } catch (error) {
       console.error('Error details:', error.response?.data || error.message);
@@ -430,12 +430,16 @@ const ChatDetail = () => {
       }
       // ✅ Nếu chưa thu hồi thì xử lý theo loại
       else if (newMessage.message_type === 'image') {
-        formattedMessage.image = newMessage.content;
+        formattedMessage.image = newMessage.file_meta?.url || newMessage.content;
       } else if (newMessage.message_type === 'video') {
-        formattedMessage.video = newMessage.content;
+        formattedMessage.video = newMessage.file_meta?.url || newMessage.content;
       } else if (newMessage.message_type === 'file') {
         formattedMessage.text = newMessage.file_meta?.file_name || newMessage.content;
-        formattedMessage.file = newMessage.file_meta;
+        formattedMessage.file = newMessage.file_meta || {
+          url: newMessage.content,
+          file_name: 'File',
+          file_type: 'application/octet-stream'
+        };
       } else {
         formattedMessage.text = newMessage.content;
       }
@@ -540,6 +544,17 @@ const ChatDetail = () => {
       }
     };
   
+    const handleUserInfoPress = () => {
+      navigation.navigate('AddFriendConfirmation', {
+        userData: {
+          id: receiverId,
+          name: name,
+          avatar: avatar,
+          email: null, // Có thể thêm email nếu có
+          phone: null, // Có thể thêm phone nếu có
+        },
+      });
+    };
 
       // Add this function to process messages and group consecutive images
   const processMessagesForImageGrid = (messageList) => {
@@ -1005,7 +1020,7 @@ const ChatDetail = () => {
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.userInfo}>
+        <TouchableOpacity onPress={handleUserInfoPress} style={styles.userInfo}>
           {avatar ? (
             <Image source={{ uri: avatar }} style={styles.avatar} />
           ) : (

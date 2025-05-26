@@ -42,7 +42,7 @@ export const getGroupDetails = async (groupId) => {
       throw new Error(response.data.message || "Không thể lấy thông tin nhóm.");
     }
 
-    console.log("Group details response:", response.data);
+    // console.log("Group details response:", response.data);
     return response.data.data;
   } catch (error) {
     console.error("Error fetching group details:", error.response?.data || error.message);
@@ -75,7 +75,7 @@ export const getMessages = async (conversationId) => {
 
     console.log("getMessages called with conversationId:", conversationId);
     const endpoint = `${API_URL}/api/message/getByConversation/${conversationId}`;
-    console.log("Fetching messages from endpoint:", endpoint);
+    // console.log("Fetching messages from endpoint:", endpoint);
 
     const response = await axios.get(endpoint, {
       headers: {

@@ -676,3 +676,38 @@ const cancelFriendRequestAPI = async (requestId) => {
     };
   }
 };
+export const checkFriendshipStatus = async (currentUserId, targetUserId) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+
+    if (!token) {
+      throw new Error("Không tìm thấy token. Vui lòng đăng nhập lại.");
+    }
+
+    const response = await fetch(`${API_URL}/api/friend-request/status/${targetUserId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      console.error('Non-JSON response from checkFriendshipStatus:', text.substring(0, 200));
+      throw new Error('Máy chủ trả về định dạng không hợp lệ. Vui lòng kiểm tra API.');
+    }
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || 'Không thể kiểm tra trạng thái kết bạn');
+    }
+
+    return data.data || { status: 'none', message: 'Chưa có mối quan hệ kết bạn' };
+  } catch (error) {
+    console.error('Error checking friendship status:', error);
+    throw error;
+  }
+};

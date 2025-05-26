@@ -75,6 +75,7 @@ const GroupInfo = () => {
   const [editedName, setEditedName] = useState(groupName);
   const [editedDescription, setEditedDescription] = useState('');
   
+  
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -390,115 +391,153 @@ const GroupInfo = () => {
   };
 
   // Add members to group
-  const handleAddMembers = async (selectedUsers) => {
-    try {
-      if (selectedUsers.length === 0) {
-        Alert.alert('Thông báo', 'Vui lòng chọn ít nhất một người dùng');
-        return;
+    // Add members to group
+    const handleAddMembers = async (selectedUsers) => {
+      try {
+        if (selectedUsers.length === 0) {
+          Alert.alert('Thông báo', 'Vui lòng chọn ít nhất một người dùng');
+          return;
+        }
+        
+        if (!groupId || typeof groupId !== 'string') {
+          Alert.alert('Lỗi', 'ID nhóm không hợp lệ');
+          return;
+        }
+    
+        setLoading(true);
+        const memberIds = selectedUsers.map(user => user._id);
+    
+        if (!memberIds.every(id => id && typeof id === 'string')) {
+          Alert.alert('Lỗi', 'Danh sách ID thành viên không hợp lệ');
+          return;
+        }
+    
+        for (const memberId of memberIds) {
+          await addGroupMembers(groupId, memberId);
+          emitAddMemberToGroup(groupId, memberId, user._id);
+        }
+        
+        const newMembers = [
+          ...members,
+          ...selectedUsers.map(user => ({
+            user_id: user._id,
+            name: user.name,
+            avatar: user.avatar,
+            role: 'member',
+          })),
+        ];
+        
+        setMembers(newMembers);
+        setShowAddMembers(false);
+        setSearchQuery('');
+        setSearchResults([]);
+        Alert.alert('Thành công', 'Đã thêm thành viên vào nhóm');
+        
+        // Navigate back to GroupChatDetail with member added event
+        navigation.navigate('GroupChatDetail', {
+          groupId,
+          memberEvent: {
+            type: 'add',
+            members: selectedUsers.map(user => ({
+              user: {
+                _id: user._id,
+                name: user.name,
+                avatar: user.avatar
+              }
+            }))
+          }
+        });
+      } catch (error) {
+        console.error('Error adding members:', error);
+        Alert.alert('Lỗi', 'Không thể thêm thành viên: ' + (error.message || 'Vui lòng thử lại'));
+      } finally {
+        setLoading(false);
       }
-      
-      if (!groupId || typeof groupId !== 'string') {
-        Alert.alert('Lỗi', 'ID nhóm không hợp lệ');
-        return;
-      }
-  
-      setLoading(true);
-      const memberIds = selectedUsers.map(user => user._id);
-  
-      if (!memberIds.every(id => id && typeof id === 'string')) {
-        Alert.alert('Lỗi', 'Danh sách ID thành viên không hợp lệ');
-        return;
-      }
-  
-      for (const memberId of memberIds) {
-        await addGroupMembers(groupId, memberId);
-        emitAddMemberToGroup(groupId, memberId, user._id);
-      }
-      
-      const newMembers = [
-        ...members,
-        ...selectedUsers.map(user => ({
-          user_id: user._id,
-          name: user.name,
-          avatar: user.avatar,
-          role: 'member',
-        })),
-      ];
-      
-      setMembers(newMembers);
-      setShowAddMembers(false);
-      setSearchQuery('');
-      setSearchResults([]);
-      Alert.alert('Thành công', 'Đã thêm thành viên vào nhóm');
-    } catch (error) {
-      console.error('Error adding members:', error);
-      Alert.alert('Lỗi', 'Không thể thêm thành viên: ' + (error.message || 'Vui lòng thử lại'));
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
-  // Remove member from group
-  const handleRemoveMember = async (memberId) => {
-    try {
-      if (memberId === user._id) {
+    // Remove member from group
+    const handleRemoveMember = async (memberId) => {
+      try {
+        if (memberId === user._id) {
+          Alert.alert(
+            'Xác nhận',
+            'Bạn muốn rời khỏi nhóm?',
+            [
+              { text: 'Hủy', style: 'cancel' },
+              { 
+                text: 'Rời nhóm', 
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    setLoading(true);
+                    await removeGroupMember(groupId, memberId);
+                    emitRemoveMemberFromGroup(groupId, user._id, user._id);
+                    navigation.navigate('MyTabs', { screen: 'Chat' });
+                    Alert.alert('Thành công', 'Bạn đã rời khỏi nhóm');
+                  } catch (error) {
+                    console.error('Error leaving group:', error);
+                    Alert.alert('Lỗi', 'Không thể rời nhóm: ' + error.message);
+                    setLoading(false);
+                  }
+                }
+              },
+            ]
+          );
+          return;
+        }
+        
         Alert.alert(
           'Xác nhận',
-          'Bạn muốn rời khỏi nhóm?',
+          'Bạn muốn xóa thành viên này khỏi nhóm?',
           [
             { text: 'Hủy', style: 'cancel' },
             { 
-              text: 'Rời nhóm', 
+              text: 'Xóa', 
               style: 'destructive',
               onPress: async () => {
                 try {
                   setLoading(true);
+                  
+                  // Find the member before removing
+                  const memberToRemove = members.find(member => 
+                    (member.user_id || member.user?._id) === memberId);
+                  
                   await removeGroupMember(groupId, memberId);
-                  emitRemoveMemberFromGroup(groupId, user._id, user._id);
-                  navigation.navigate('MyTabs', { screen: 'Chat' });
-                  Alert.alert('Thành công', 'Bạn đã rời khỏi nhóm');
+                  setMembers(members.filter(member => 
+                    (member.user_id || member.user?._id) !== memberId));
+                  setLoading(false);
+                  Alert.alert('Thành công', 'Đã xóa thành viên khỏi nhóm');
+                  
+                  // Navigate back to GroupChatDetail with member removed event
+                  if (memberToRemove) {
+                    navigation.navigate('GroupChatDetail', {
+                      groupId,
+                      memberEvent: {
+                        type: 'remove',
+                        member: {
+                          user: {
+                            _id: memberId,
+                            name: memberToRemove.user?.name || memberToRemove.name,
+                            avatar: memberToRemove.user?.avatar || memberToRemove.avatar
+                          }
+                        }
+                      }
+                    });
+                  }
                 } catch (error) {
-                  console.error('Error leaving group:', error);
-                  Alert.alert('Lỗi', 'Không thể rời nhóm: ' + error.message);
+                  console.error('Error removing member:', error);
+                  Alert.alert('Lỗi', 'Không thể xóa thành viên: ' + error.message);
                   setLoading(false);
                 }
               }
             },
           ]
         );
-        return;
+      } catch (error) {
+        console.error('Error with member action:', error);
+        Alert.alert('Lỗi', 'Không thể thực hiện hành động: ' + error.message);
       }
-      
-      Alert.alert(
-        'Xác nhận',
-        'Bạn muốn xóa thành viên này khỏi nhóm?',
-        [
-          { text: 'Hủy', style: 'cancel' },
-          { 
-            text: 'Xóa', 
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                setLoading(true);
-                await removeGroupMember(groupId, memberId);
-                setMembers(members.filter(member => 
-                  (member.user_id || member.user?._id) !== memberId));
-                setLoading(false);
-                Alert.alert('Thành công', 'Đã xóa thành viên khỏi nhóm');
-              } catch (error) {
-                console.error('Error removing member:', error);
-                Alert.alert('Lỗi', 'Không thể xóa thành viên: ' + error.message);
-                setLoading(false);
-              }
-            }
-          },
-        ]
-      );
-    } catch (error) {
-      console.error('Error with member action:', error);
-      Alert.alert('Lỗi', 'Không thể thực hiện hành động: ' + error.message);
-    }
-  };
+    };
 
   // Delete group
   const handleDeleteGroup = () => {
